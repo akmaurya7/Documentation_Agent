@@ -46,6 +46,7 @@ class Publisher:
         run_id: str,
         repo: str,
         head_sha: str,
+        base_sha: str = "",
         base_branch: str,
         docs_root: str,
         title: str,
@@ -73,7 +74,10 @@ class Publisher:
             verify_branch(branch, run_id)
             if shadow:
                 return PublishResult("shadow", branch=branch)
-            checkout.run(["switch", "--create", branch, base_branch])
+            source_base = base_sha or base_branch
+            if base_sha:
+                checkout.run(["merge-base", "--is-ancestor", base_sha, base_branch])
+            checkout.run(["switch", "--create", branch, source_base])
             checkout.run(["add", "--", docs_root])
             changed = checkout.run(["diff", "--cached", "--name-only"]).splitlines()
             verify_scope(changed, docs_root)

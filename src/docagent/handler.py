@@ -99,6 +99,7 @@ class DocumentationRunHandler:
                 run_id=run.idempotency_key,
                 repo=run.repo,
                 head_sha=run.head_sha,
+                base_sha=run.base_sha,
                 base_branch=run.base_branch,
                 docs_root=self.docs_root,
                 title=f"docs: update documentation (source: {run.head_sha[:8]})",
