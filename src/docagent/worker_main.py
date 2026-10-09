@@ -52,6 +52,8 @@ def build_handler(settings: Settings, store: RunStore | None = None) -> RunHandl
         limits=settings.limits,
         token_provider=api.installation_token,
         store=store,
+        reviewers=settings.reviewers,
+        labels=settings.labels,
     )
 
 

@@ -10,3 +10,4 @@
 - Reports persist prompt hashes and input/output token totals. Monetary cost remains deployment-specific because provider pricing and currency are not configured in this repository; publication must not treat an absent cost as zero.
 - Git checkout and push use a temporary askpass transport for the short-lived installation token; the token is not written to a remote URL or report.
 - The webhook stores the repository clone URL supplied by GitHub. Fork and private-repository transport policy still requires the deployment to provide an authenticated Git remote before enabling non-shadow publishing.
+- Source pull-request numbers are retained when GitHub supplies them; labels, reviewer requests, and source-PR comments are optional adapter actions controlled by deployment settings.

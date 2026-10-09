@@ -153,20 +153,34 @@ def test_publisher_commits_and_pushes_documentation_branch(tmp_path: Path) -> No
     (repo / "docs" / "guide.md").write_text("new\n", encoding="utf-8")
 
     class API:
+        def __init__(self):
+            self.notifications = []
+
         async def find_open_agent_pr(self, repo, head_sha):
             return None
 
         async def create_agent_pr(self, *args):
-            return {"url": "https://github.example/pr/2"}
+            return {"url": "https://github.example/pr/2", "number": 2}
 
+        async def add_labels(self, *args):
+            self.notifications.append(("labels", args))
+
+        async def request_reviewers(self, *args):
+            self.notifications.append(("reviewers", args))
+
+        async def comment_on_pr(self, *args):
+            self.notifications.append(("comment", args))
+
+    api = API()
     result = asyncio.run(
-        __import__("docagent.publisher", fromlist=["Publisher"]).Publisher(API()).publish(
+        __import__("docagent.publisher", fromlist=["Publisher"]).Publisher(api).publish(
             Checkout(repo), run_id="run", repo="acme/app", head_sha="sha", base_branch="main",
             docs_root="docs", title="update", body="safe", checks=type("C", (), {"failed": []})(),
-            shadow=False,
+            shadow=False, source_pr_number=9, reviewers=["owner"], labels=["documentation"],
         )
     )
     assert result.status == "published"
+    assert [kind for kind, _ in api.notifications] == ["labels", "reviewers", "comment"]
 
 
 def test_local_queue_and_worker_failure_are_safe(tmp_path: Path) -> None:
@@ -323,6 +337,12 @@ async def test_github_adapters_cover_authenticated_requests(monkeypatch) -> None
     assert await client.open_pull_requests(1, "acme/app") == []
     assert (await client.create_pull_request(1, "acme/app", "t", "b", "h", "main"))["url"]
     assert (await client.update_pull_request(1, "acme/app", 1, "t", "b"))["full_name"] == "acme/app"
+    await client.add_labels(1, "acme/app", 1, ["documentation"])
+    await client.request_reviewers(1, "acme/app", 1, ["owner"])
+    await client.comment_on_pr(1, "acme/app", 1, "DocAgent documentation PR: https://example/pr/1")
     adapter = GitHubPullRequestAPI(client, 1, "docagent[bot]")
     assert await adapter.find_open_agent_pr("acme/app", "sha") is None
     assert await adapter.installation_token() == "installation"
+    await adapter.add_labels("acme/app", 1, ["documentation"])
+    await adapter.request_reviewers("acme/app", 1, ["owner"])
+    await adapter.comment_on_pr("acme/app", 1, "link")

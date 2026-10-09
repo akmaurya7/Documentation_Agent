@@ -37,6 +37,7 @@ class Run:
     base_branch: str = ""
     report_json: str = ""
     attempts: int = 0
+    source_pr_number: int | None = None
 
 
 _TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
@@ -83,6 +84,7 @@ class RunStore:
                 base_sha VARCHAR(256) NOT NULL DEFAULT '',
                 base_branch VARCHAR(256) NOT NULL DEFAULT '',
                 attempts INTEGER NOT NULL DEFAULT 0,
+                source_pr_number INTEGER,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )"""))
             connection.execute(text(f"""CREATE TABLE IF NOT EXISTS audit_events (
@@ -113,31 +115,40 @@ class RunStore:
                     str(row[1])
                     for row in connection.exec_driver_sql("PRAGMA table_info(runs)").all()
                 }
-                for name in ("source_url", "base_sha", "base_branch", "attempts"):
+                for name in (
+                    "source_url", "base_sha", "base_branch", "attempts", "source_pr_number"
+                ):
                     if name not in columns:
-                        column_type = "INTEGER" if name == "attempts" else "TEXT"
-                        default = "0" if name == "attempts" else "''"
+                        column_type = (
+                            "INTEGER" if name in {"attempts", "source_pr_number"} else "TEXT"
+                        )
+                        default = "0" if name == "attempts" else (
+                            "NULL" if name == "source_pr_number" else "''"
+                        )
+                        nullable = " NOT NULL" if name != "source_pr_number" else ""
                         ddl = (
                             f"ALTER TABLE runs ADD COLUMN {name} "
-                            f"{column_type} NOT NULL DEFAULT {default}"
+                            f"{column_type}{nullable} DEFAULT {default}"
                         )
                         connection.execute(text(ddl))
 
     def enqueue_once(
         self, key: str, delivery_id: str, repo: str, head_sha: str, event_type: str,
         source_url: str = "", base_sha: str = "", base_branch: str = "",
+        source_pr_number: int | None = None,
     ) -> bool:
         """Insert a queued run once; return false for replayed events."""
         with self.engine.begin() as connection:
             result = connection.execute(
                 text("""INSERT INTO runs
                 (idempotency_key, delivery_id, repo, head_sha, event_type, status,
-                 source_url, base_sha, base_branch)
-                VALUES (:key, :delivery, :repo, :head, :event, 'queued', :source, :base, :branch)
+                 source_url, base_sha, base_branch, source_pr_number)
+                VALUES (:key, :delivery, :repo, :head, :event, 'queued', :source, :base, :branch,
+                        :source_pr_number)
                 ON CONFLICT (idempotency_key) DO NOTHING"""),
                 {"key": key, "delivery": delivery_id, "repo": repo, "head": head_sha,
                  "event": event_type, "source": source_url, "base": base_sha,
-                 "branch": base_branch},
+                 "branch": base_branch, "source_pr_number": source_pr_number},
             )
         if result.rowcount != 1:
             return False
@@ -149,7 +160,7 @@ class RunStore:
         with self.engine.connect() as connection:
             row = connection.execute(
                 text("""SELECT idempotency_key, delivery_id, repo, head_sha, event_type,
-                status, source_url, base_sha, base_branch, attempts FROM runs
+                status, source_url, base_sha, base_branch, attempts, source_pr_number FROM runs
                 WHERE idempotency_key = :key"""), {"key": key}
             ).mappings().first()
         if row is None:
@@ -205,7 +216,7 @@ class RunStore:
         with self.engine.connect() as connection:
             rows = connection.execute(
                 text("""SELECT idempotency_key, delivery_id, repo, head_sha, event_type,
-                status, source_url, base_sha, base_branch, attempts FROM runs
+                status, source_url, base_sha, base_branch, attempts, source_pr_number FROM runs
                 ORDER BY created_at DESC LIMIT :limit"""), {"limit": limit}
             ).mappings().all()
         return [_run(row) for row in rows]
@@ -339,5 +350,10 @@ def _run(row: object, report_json: str = "") -> Run:
         base_sha=str(values["base_sha"]),  # type: ignore[index]
         base_branch=str(values["base_branch"]),  # type: ignore[index]
         attempts=int(values["attempts"]),  # type: ignore[index]
+        source_pr_number=(
+            int(values["source_pr_number"])  # type: ignore[index]
+            if values["source_pr_number"] is not None  # type: ignore[index]
+            else None
+        ),
         report_json=report_json,
     )

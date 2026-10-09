@@ -97,6 +97,36 @@ class GitHubClient:
             raise GitHubClientError("GitHub returned an invalid pull-request response")
         return data
 
+    async def add_labels(
+        self, installation_id: int, repo: str, number: int, labels: list[str]
+    ) -> None:
+        """Apply non-sensitive labels to a documentation pull request."""
+        await self._request(
+            "POST", f"/repos/{repo}/issues/{number}/labels",
+            headers=self._token_headers(await self.installation_token(installation_id)),
+            body={"labels": labels},
+        )
+
+    async def request_reviewers(
+        self, installation_id: int, repo: str, number: int, reviewers: list[str]
+    ) -> None:
+        """Request review from configured CODEOWNERS identities."""
+        await self._request(
+            "POST", f"/repos/{repo}/pulls/{number}/requested_reviewers",
+            headers=self._token_headers(await self.installation_token(installation_id)),
+            body={"reviewers": reviewers},
+        )
+
+    async def comment_on_pr(
+        self, installation_id: int, repo: str, number: int, body: str
+    ) -> None:
+        """Add a short source-PR link without exposing report contents."""
+        await self._request(
+            "POST", f"/repos/{repo}/issues/{number}/comments",
+            headers=self._token_headers(await self.installation_token(installation_id)),
+            body={"body": body},
+        )
+
     async def _request(
         self, method: str, path: str, *, headers: dict[str, str], body: dict[str, Any] | None = None
     ) -> Any:

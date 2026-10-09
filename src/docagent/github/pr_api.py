@@ -41,3 +41,12 @@ class GitHubPullRequestAPI:
         return await self.client.update_pull_request(
             self.installation_id, repo, number, title, body
         )
+
+    async def add_labels(self, repo: str, number: int, labels: list[str]) -> None:
+        await self.client.add_labels(self.installation_id, repo, number, labels)
+
+    async def request_reviewers(self, repo: str, number: int, reviewers: list[str]) -> None:
+        await self.client.request_reviewers(self.installation_id, repo, number, reviewers)
+
+    async def comment_on_pr(self, repo: str, number: int, body: str) -> None:
+        await self.client.comment_on_pr(self.installation_id, repo, number, body)

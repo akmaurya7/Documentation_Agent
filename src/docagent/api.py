@@ -111,6 +111,9 @@ def create_app(
             )
         repo = str(payload.get("repository", {}).get("full_name", ""))
         pull_request = payload.get("pull_request", {})
+        source_pr_number = pull_request.get("number")
+        if not isinstance(source_pr_number, int):
+            source_pr_number = None
         head_sha = str(payload.get("after") or pull_request.get("head", {}).get("sha", ""))
         base_sha = str(pull_request.get("base", {}).get("sha", ""))
         base_branch = str(pull_request.get("base", {}).get("ref", ""))
@@ -129,7 +132,8 @@ def create_app(
             return JSONResponse({"accepted": False, "reason": "fork"}, status_code=202)
         key = f"{repo}:{head_sha}:{event}"
         accepted = run_store.enqueue_once(
-            key, delivery, repo, head_sha, event, source_url, base_sha, base_branch
+            key, delivery, repo, head_sha, event, source_url, base_sha, base_branch,
+            source_pr_number,
         )
         queued_run = run_store.get(key)
         if queued_run is None:

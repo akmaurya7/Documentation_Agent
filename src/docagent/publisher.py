@@ -53,6 +53,9 @@ class Publisher:
         body: str,
         checks: CheckReport,
         shadow: bool = True,
+        source_pr_number: int | None = None,
+        reviewers: list[str] | None = None,
+        labels: list[str] | None = None,
     ) -> PublishResult:
         """Publish only a checked documentation diff."""
         if checks.failed:
@@ -65,6 +68,9 @@ class Publisher:
             number = existing.get("number")
             if callable(update) and isinstance(number, int):
                 updated = await update(repo, number, title, body)
+                await self._notify_source(
+                    repo, number, updated, source_pr_number, reviewers or [], labels or []
+                )
                 return PublishResult(
                     "updated", pull_request_url=str(updated.get("url", existing.get("url", "")))
                 )
@@ -87,6 +93,33 @@ class Publisher:
             checkout.run(["commit", "-m", f"docs(agent): {title} [run {run_id}]"])
             checkout.run(["push", "--set-upstream", "origin", branch])
             pr = await self.api.create_agent_pr(repo, title, body, branch, base_branch)
+            number = pr.get("number")
+            if not isinstance(number, int):
+                raise RuntimeError("GitHub returned a pull request without a number")
+            await self._notify_source(
+                repo, number, pr, source_pr_number, reviewers or [], labels or []
+            )
             return PublishResult("published", branch=branch, pull_request_url=str(pr["url"]))
         except (GuardrailViolation, RuntimeError) as exc:
             return PublishResult("blocked", branch=branch, reason=str(exc))
+
+    async def _notify_source(
+        self,
+        repo: str,
+        doc_pr_number: int,
+        pull_request: dict[str, Any],
+        source_pr_number: int | None,
+        reviewers: list[str],
+        labels: list[str],
+    ) -> None:
+        """Apply review metadata and link the generated PR from its source."""
+        add_labels = getattr(self.api, "add_labels", None)
+        if callable(add_labels) and labels:
+            await add_labels(repo, doc_pr_number, labels)
+        request_reviewers = getattr(self.api, "request_reviewers", None)
+        if callable(request_reviewers) and reviewers:
+            await request_reviewers(repo, doc_pr_number, reviewers)
+        comment = getattr(self.api, "comment_on_pr", None)
+        url = str(pull_request.get("url", ""))
+        if callable(comment) and source_pr_number is not None and url:
+            await comment(repo, source_pr_number, f"DocAgent documentation PR: {url}")

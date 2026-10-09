@@ -38,6 +38,8 @@ class DocumentationRunHandler:
         limits: RunLimits | None = None,
         token_provider: Callable[[], Awaitable[str]] | None = None,
         store: RunStore | None = None,
+        reviewers: list[str] | None = None,
+        labels: list[str] | None = None,
     ) -> None:
         self.provider = provider
         self.publisher = publisher
@@ -50,6 +52,8 @@ class DocumentationRunHandler:
         self.limits = limits or RunLimits()
         self.token_provider = token_provider
         self.store = store
+        self.reviewers = reviewers or []
+        self.labels = labels or []
 
     async def process(self, run: Run) -> RunStatus:
         """Process one persisted run and return a terminal state."""
@@ -106,6 +110,9 @@ class DocumentationRunHandler:
                 body=body,
                 checks=checks,
                 shadow=self.shadow,
+                source_pr_number=run.source_pr_number,
+                reviewers=self.reviewers,
+                labels=self.labels,
             )
             if published.status in {"blocked", "noop"}:
                 return RunStatus.BLOCKED if published.status == "blocked" else RunStatus.NOOP

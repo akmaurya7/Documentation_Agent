@@ -18,7 +18,7 @@ class FakePRAPI:
     async def create_agent_pr(self, repo: str, title: str, body: str, head: str, base: str):
         del repo, title, body, head, base
         self.created = True
-        return {"url": "https://github.example/pr/1"}
+        return {"url": "https://github.example/pr/1", "number": 1}
 
 
 def test_checks_reject_missing_front_matter_and_external_url(tmp_path: Path) -> None:
@@ -84,7 +84,7 @@ def test_publisher_updates_existing_pr_when_supported(tmp_path: Path) -> None:
 
         async def update_agent_pr(self, repo: str, number: int, title: str, body: str):
             assert number == 7
-            return {"url": "https://github.example/pr/7"}
+            return {"url": "https://github.example/pr/7", "number": 7}
 
     result = asyncio.run(
         Publisher(UpdatingAPI()).publish(
