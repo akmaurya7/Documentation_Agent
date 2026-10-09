@@ -201,3 +201,31 @@ def test_metrics_expose_only_run_counts(tmp_path: Path) -> None:
     store.enqueue_once("k", "d", "acme/app", "sha", "push")
     response = TestClient(create_app(settings, store, LocalRunQueue())).get("/metrics")
     assert response.json() == {"docagent_runs_queued": 1}
+
+
+def test_admin_rerun_requeues_only_terminal_non_successful_runs(tmp_path: Path) -> None:
+    settings = Settings(
+        webhook_secret="a" * 32,
+        admin_token="b" * 24,
+        database_path=str(tmp_path / "runs.db"),
+    )
+    store = RunStore(settings.database_path)
+    store.enqueue_once("failed", "d1", "acme/app", "sha1", "push")
+    store.transition("failed", RunStatus.RUNNING)
+    store.transition("failed", RunStatus.FAILED)
+    store.save_report("failed", {"status": "failed"})
+    store.enqueue_once("queued", "d2", "acme/app", "sha2", "push")
+    queue = LocalRunQueue()
+    client = TestClient(create_app(settings, store, queue))
+    headers = {"x-docagent-admin-token": "b" * 24}
+
+    response = client.post("/admin/rerun", headers=headers, json={"idempotency_key": "failed"})
+    assert response.status_code == 200
+    assert response.json() == {"idempotency_key": "failed", "status": "queued"}
+    assert store.get("failed").report_json == ""  # type: ignore[union-attr]
+    assert store.audit_events("failed")[-1][0] == "run.requeued"
+
+    response = client.post("/admin/rerun", headers=headers, json={"idempotency_key": "queued"})
+    assert response.status_code == 409
+    response = client.post("/admin/rerun", headers=headers, json={"idempotency_key": "missing"})
+    assert response.status_code == 404

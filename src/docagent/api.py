@@ -70,6 +70,25 @@ def create_app(
         run_store.set_kill_switch(config.kill_switch)
         return {"enabled": config.kill_switch}
 
+    @app.post("/admin/rerun")
+    async def admin_rerun(request: Request) -> dict[str, str]:
+        require_admin(request)
+        payload = await request.json()
+        key = payload.get("idempotency_key") if isinstance(payload, dict) else None
+        if not isinstance(key, str) or not key:
+            raise HTTPException(status_code=400, detail="idempotency_key is required")
+        try:
+            rerun = run_store.requeue(key)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        try:
+            await run_queue.enqueue(rerun)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="queue unavailable") from exc
+        return {"idempotency_key": key, "status": rerun.status.value}
+
     @app.post("/webhooks/github")
     async def github_webhook(request: Request) -> JSONResponse:
         body = await request.body()

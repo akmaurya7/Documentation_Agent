@@ -259,6 +259,31 @@ class RunStore:
             raise RuntimeError("run disappeared during transition")
         return updated
 
+    def requeue(self, key: str) -> Run:
+        """Queue a failed, blocked, or noop run for an explicit admin retry."""
+        retryable = {RunStatus.FAILED, RunStatus.BLOCKED, RunStatus.NOOP}
+        current = self.get(key)
+        if current is None:
+            raise KeyError(key)
+        if current.status not in retryable:
+            raise ValueError(f"run is not safely rerunnable: {current.status}")
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                text("UPDATE runs SET status = 'queued' WHERE idempotency_key = :key "
+                     "AND status = :status"),
+                {"key": key, "status": current.status.value},
+            )
+            if result.rowcount != 1:
+                raise ValueError("run changed before it could be requeued")
+            connection.execute(
+                text("DELETE FROM run_reports WHERE idempotency_key = :key"), {"key": key}
+            )
+        self.audit(key, "run.requeued", {"from": current.status.value})
+        updated = self.get(key)
+        if updated is None:
+            raise RuntimeError("run disappeared during requeue")
+        return updated
+
 
 def _sqlite_url(path: str) -> str:
     """Build a SQLAlchemy SQLite URL from the existing path setting."""

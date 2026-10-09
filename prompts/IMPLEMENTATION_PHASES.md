@@ -32,10 +32,11 @@ recorded in the phase summary.
 ## Current baseline
 
 The repository currently has the M0 service foundation, deterministic
-guardrails, persistence and queue boundary, plus a tested agent-library
-boundary. The worker still uses a fail-closed handler; it cannot yet perform a
-full GitHub checkout-to-documentation-PR run. The existing test suite passes,
-but that is not acceptance of all phases.
+guardrails, PostgreSQL-capable persistence, queue boundary, authenticated
+administration, and tested agent/publisher-library boundaries. The worker still
+requires deployment-specific GitHub/provider adapters for a full checkout-to-
+documentation-PR run. The existing test suite passes, but that is not
+acceptance of all phases.
 
 ## Phase 0 — Baseline and project contract
 

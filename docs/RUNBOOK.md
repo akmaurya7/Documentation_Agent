@@ -29,9 +29,14 @@ letters and must be investigated before retrying.
 
 Set `DOCAGENT_KILL_SWITCH=true` and restart the service. Readiness will fail and no new webhook will be accepted for processing.
 
-The authenticated `POST /admin/kill-switch` endpoint can toggle the in-process
-switch without a restart. A restart is still required when changing the
-environment variable.
+The authenticated `POST /admin/kill-switch` endpoint toggles the shared
+persisted switch without a restart. A restart is still required when changing
+the environment variable.
+
+To retry a failed, blocked, or noop run, call the authenticated
+`POST /admin/rerun` endpoint with its `idempotency_key`. Successful and queued
+runs are rejected; the old report is cleared, an audit event is written, and
+the run is enqueued again.
 
 ## Incident response
 
