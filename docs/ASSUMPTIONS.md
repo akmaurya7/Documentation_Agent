@@ -3,7 +3,7 @@
 - The current implementation includes the webhook, queue, bounded agent, checks, and publisher paths. Publication remains shadow-only until `DOCAGENT_SHADOW=false` is explicitly configured.
 - PostgreSQL is supported through `DOCAGENT_DATABASE_URL`; run the Alembic migration before a production rollout. SQLite remains for single-instance local use.
 - A configured webhook secret is mandatory. The application refuses to start without one.
-- GitHub and Anthropic adapters are enabled only when their credentials and prompt hash allowlist are configured; missing configuration remains fail-closed.
+- GitHub and the selected model provider are enabled only when their credentials/session and prompt hash allowlist are configured; missing configuration remains fail-closed. The Antigravity CLI provider requires a native worker host with an existing `agy` account session.
 - Queue execution is intentionally not performed inline as documentation work. The webhook persists the run and enqueues its idempotency record; a worker is required for end-to-end processing.
 - The current worker selects a fail-closed handler when required GitHub App settings are absent; otherwise it builds the real checkout/agent/check/publisher handler.
 - The agent tool layer exposes only the core read/search/diff/write/finalize tools. PR metadata and publisher operations stay outside the model tool surface.

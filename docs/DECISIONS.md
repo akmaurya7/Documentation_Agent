@@ -18,7 +18,12 @@ Git operations run through fixed argument lists with `shell=False`, disabled hoo
 
 ## 2026-10-09: Provider boundary
 
-The agent loop depends on a provider protocol and uses the official Anthropic SDK only in its adapter. Tests use a scripted provider and never make an LLM request. Provider output is normalized through Pydantic models before tool execution.
+The agent loop depends on a provider protocol. It supports the official
+Anthropic SDK and an Antigravity CLI adapter. The CLI adapter uses its
+documented stream protocol and cached account session, runs in an isolated
+temporary directory, and returns only Pydantic-validated provider output; it
+never reads OAuth token storage. Tests use scripted/fake providers and the
+real Antigravity smoke check is performed outside CI on an authenticated host.
 
 ## 2026-10-09: Pull-request idempotency
 

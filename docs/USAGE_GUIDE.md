@@ -106,7 +106,8 @@ production persistence target.
 Provide:
 
 - A GitHub App installation on each target repository.
-- An Anthropic API key for the configured provider.
+- Credentials for the selected model provider: an Anthropic API key, or an
+  already authenticated Antigravity CLI account session.
 - A webhook secret shared between GitHub and DocAgent.
 - A private key file for the GitHub App.
 - A strong admin token for operational endpoints.
@@ -134,6 +135,37 @@ DOCAGENT_WEBHOOK_SECRET=<random value of at least 16 characters>
 ANTHROPIC_API_KEY=<provider key>
 DOCAGENT_ADMIN_TOKEN=<strong random operator token>
 ```
+
+### Antigravity CLI account login
+
+Install the official `agy` CLI on the same host as the DocAgent worker and log
+in interactively once:
+
+```powershell
+irm https://antigravity.google/cli/install.ps1 | iex
+agy
+```
+
+Complete the browser sign-in, then configure:
+
+```text
+$env:DOCAGENT_PROVIDER = "antigravity_cli"
+$env:DOCAGENT_MODEL_NAME = "gemini-3.8-flash-low"
+$env:DOCAGENT_ANTIGRAVITY_COMMAND = "agy"
+```
+
+The provider invokes the documented Antigravity headless stream protocol in an
+isolated temporary directory. It sends the existing sanitized conversation and
+tool schemas to `agy`, accepts only a typed JSON result, and does not grant the
+CLI access to the repository checkout. DocAgent never reads, copies, or stores
+the Antigravity OAuth token; the CLI uses its own operating-system keyring
+session. The official CLI documentation describes local keyring sign-in and
+headless runs using cached credentials.
+
+For Docker or a remote worker, the image must include a pinned `agy` binary and
+the runtime identity must have its own authenticated keyring/profile. A host
+login is not automatically visible inside a container. If that profile is
+unavailable, DocAgent fails closed rather than falling back to an API key.
 
 Start the API:
 
@@ -206,7 +238,9 @@ restart the worker. A hash mismatch blocks processing before model execution.
 | Setting | Purpose | Local default or example |
 | --- | --- | --- |
 | `DOCAGENT_WEBHOOK_SECRET` | HMAC secret for GitHub webhooks. | Required. |
-| `ANTHROPIC_API_KEY` | Provider credential. | Required for real analysis. |
+| `ANTHROPIC_API_KEY` | Anthropic provider credential. | Required only when provider is `anthropic`. |
+| `DOCAGENT_PROVIDER` | Provider adapter. | `anthropic` or `antigravity_cli` |
+| `DOCAGENT_ANTIGRAVITY_COMMAND` | Antigravity CLI executable. | `agy` |
 | `DOCAGENT_PROMPT_PATH` | Trusted policy prompt path. | `prompts/docagent_system.md` |
 | `DOCAGENT_ALLOWED_PROMPT_HASHES` | Approved prompt SHA-256 values. | `[]` |
 | `DOCAGENT_DATABASE_PATH` | SQLite file path. | `data/docagent.sqlite3` |
@@ -420,6 +454,8 @@ The following deployment work remains explicit rather than silently assumed:
   end-to-end incident-report workflow.
 - Conflict regeneration, signed commits, and a complete adversarial/load-test
   suite are still release-gate work.
+- Antigravity account login is supported for a native worker host. Container
+  packaging and managed keyring provisioning remain deployment-specific.
 
 Review [SECURITY.md](SECURITY.md), [RUNBOOK.md](RUNBOOK.md),
 [ARCHITECTURE.md](ARCHITECTURE.md), [ASSUMPTIONS.md](ASSUMPTIONS.md), and

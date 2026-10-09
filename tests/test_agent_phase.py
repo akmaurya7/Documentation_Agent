@@ -6,6 +6,7 @@ import pytest
 from docagent.agent.loop import AgentLoopError, run_agent
 from docagent.agent.models import ProviderResponse, ToolCall
 from docagent.agent.prompt import load_prompt
+from docagent.agent.provider import AntigravityCliProvider, ProviderError
 from docagent.agent.tools import ToolContext
 from docagent.github.checkout import Checkout
 
@@ -17,6 +18,54 @@ class ScriptedProvider:
     async def complete(self, system, messages, tools, model):
         del system, messages, tools, model
         return next(self.responses)
+
+
+class FakeAntigravityProcess:
+    async def communicate(self, payload: bytes):
+        assert b"SYSTEM POLICY" in payload
+        return (
+            b'{"event":"result","result":{"status":"SUCCESS",'
+            b'"response":"{\\"tool_call\\":null,\\"final\\":'
+            b'{\\"status\\":\\"noop\\"}}",'
+            b'"usage":{"input_tokens":12,"output_tokens":4}}}\n',
+            b"",
+        )
+
+
+@pytest.mark.asyncio
+async def test_antigravity_cli_provider_uses_typed_stream_result(monkeypatch) -> None:
+    captured = {}
+
+    async def create_process(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeAntigravityProcess()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", create_process)
+    response = await AntigravityCliProvider(timeout_seconds=5).complete(
+        "policy", [], [], "gemini-test"
+    )
+    assert response.final is not None and response.final.status == "noop"
+    assert response.input_tokens == 12
+    assert response.output_tokens == 4
+    assert "--mode" in captured["args"]
+    assert captured["kwargs"]["cwd"]
+
+
+@pytest.mark.asyncio
+async def test_antigravity_cli_provider_rejects_missing_result(monkeypatch) -> None:
+    class EmptyProcess:
+        async def communicate(self, payload: bytes):
+            del payload
+            return b"", b""
+
+    async def create_process(*args, **kwargs):
+        del args, kwargs
+        return EmptyProcess()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", create_process)
+    with pytest.raises(ProviderError, match="no result"):
+        await AntigravityCliProvider(timeout_seconds=5).complete("policy", [], [], "model")
 
 
 def test_prompt_hash_is_required(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -53,6 +54,8 @@ class Settings(BaseSettings):
     app_name: str = "docagent"
     webhook_secret: str = Field(min_length=16, repr=False)
     model_name: str = "claude-3-5-sonnet-latest"
+    provider: Literal["anthropic", "antigravity_cli"] = "anthropic"
+    antigravity_command: str = "agy"
     prompt_path: str = "prompts/docagent_system.md"
     database_path: str = "data/docagent.sqlite3"
     database_url: str | None = None

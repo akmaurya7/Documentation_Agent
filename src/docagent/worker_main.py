@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from .agent.provider import AnthropicProvider
+from .agent.provider import AnthropicProvider, AntigravityCliProvider
 from .config import Settings
 from .github.auth import GitHubAppAuth
 from .github.client import GitHubClient
@@ -40,8 +40,13 @@ def build_handler(settings: Settings, store: RunStore | None = None) -> RunHandl
     auth = GitHubAppAuth(settings.github_app_id, private_key)
     client = GitHubClient(auth)
     api = GitHubPullRequestAPI(client, settings.github_app_id, settings.github_bot_login)
+    provider = (
+        AnthropicProvider()
+        if settings.provider == "anthropic"
+        else AntigravityCliProvider(settings.antigravity_command, settings.limits.wall_time_seconds)
+    )
     return DocumentationRunHandler(
-        AnthropicProvider(),
+        provider,
         Publisher(api),
         prompt_path=settings.prompt_path,
         allowed_prompt_hashes=settings.allowed_prompt_hashes,
