@@ -52,6 +52,25 @@ The API is the receptionist. It authenticates and queues work, but does not do
 long-running model work. The worker is the technician. It performs the actual
 checkout, analysis, document editing, validation, and publication.
 
+The complete system flow is shown below. Read the arrows from top to bottom:
+
+```mermaid
+flowchart TD
+    A[Developer changes code] --> B[GitHub sends webhook]
+    B --> C[API verifies signature and filters event]
+    C --> D[Database stores idempotent run]
+    D --> E[Redis queue]
+    E --> F[Worker claims run]
+    F --> G[Checkout exact commit]
+    G --> H[Model reads bounded context]
+    H --> I[Typed tools read or write docs]
+    I --> J[Deterministic safety checks]
+    J --> K{Shadow mode}
+    K -->|Yes| L[Store report for review]
+    K -->|No| M[Create documentation PR]
+    M --> N[Human reviews and merges]
+```
+
 ### What you must provide
 
 For a real end-to-end run, you need all of these:
@@ -157,6 +176,25 @@ queued -> running -> noop
                  -> blocked
                  -> failed
                  -> succeeded
+```
+
+This is the same lifecycle with the main decision points shown visually:
+
+```mermaid
+flowchart LR
+    Q[queued] --> R[running]
+    R --> N[noop]
+    R --> B[blocked]
+    R --> F[failed]
+    R --> S[succeeded]
+    F --> T{Attempts remain}
+    B --> U[Operator fixes configuration]
+    N --> V[Operator may rerun]
+    T -->|Yes| R
+    T -->|No| W[Dead letter record]
+    U --> X[Authenticated rerun]
+    V --> X
+    X --> Q
 ```
 
 Transient worker exceptions are retried up to `DOCAGENT_MAX_ATTEMPTS`. Each
@@ -372,6 +410,33 @@ available to every worker instance; the login command is an operator action,
 not an API endpoint. See the official [Sign in with ChatGPT guide](https://developers.openai.com/siwc/token-sharing-open-source/sign-in),
 [token reference](https://developers.openai.com/siwc/token-sharing-open-source/token-reference),
 and [models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
+
+The Codex login sequence looks like this:
+
+```mermaid
+sequenceDiagram
+    actor Operator
+    participant Login as Local login command
+    participant Browser
+    participant OpenAI as OpenAI authorization service
+    participant File as Encrypted credential file
+    participant Worker
+    Operator->>Login: Run docagent.codex_login
+    Login->>Browser: Open authorization URL with PKCE
+    Browser->>OpenAI: Sign in and approve access
+    OpenAI-->>Browser: Redirect to loopback callback
+    Browser->>Login: Return code and issued client ID
+    Login->>OpenAI: Exchange code for tokens
+    OpenAI-->>Login: Access, refresh, and identity tokens
+    Login->>File: Encrypt and save credentials
+    Worker->>File: Load encrypted credentials
+    Worker->>OpenAI: Refresh near-expiry access token
+    OpenAI-->>Worker: Replacement token set
+```
+
+The browser is used only during the operator login. Normal documentation runs
+use the encrypted credential file and do not open a browser. If a refresh fails,
+the worker reports a provider failure instead of asking for a different account.
 
 Start the API:
 
