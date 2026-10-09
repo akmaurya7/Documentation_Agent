@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -52,7 +51,9 @@ def create_app(
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="webhook payload must be an object")
         if config.kill_switch:
-            return JSONResponse({"accepted": False, "reason": "kill switch is active"}, status_code=202)
+            return JSONResponse(
+                {"accepted": False, "reason": "kill switch is active"}, status_code=202
+            )
         repo = str(payload.get("repository", {}).get("full_name", ""))
         pull_request = payload.get("pull_request", {})
         head_sha = str(payload.get("after") or pull_request.get("head", {}).get("sha", ""))
