@@ -32,3 +32,9 @@ def test_run_state_transitions_are_terminal(tmp_path):
     store.transition("k", RunStatus.BLOCKED)
     with pytest.raises(ValueError):
         store.transition("k", RunStatus.RUNNING)
+
+
+def test_dead_letter_redacts_failure_details(tmp_path):
+    store = RunStore(str(tmp_path / "runs.db"))
+    assert store.enqueue_once("k", "d", "acme/app", "sha", "push")
+    store.dead_letter("k", "token=ghp_123456789012345678901234567890")

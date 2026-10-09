@@ -86,6 +86,12 @@ class RunStore:
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(idempotency_key) REFERENCES runs(idempotency_key)
             )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS dead_letters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                idempotency_key TEXT NOT NULL,
+                error TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""")
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
@@ -208,6 +214,23 @@ class RunStore:
             )
             for row in rows
         ]
+
+    def status_counts(self) -> dict[str, int]:
+        """Return counts by persisted run state for metrics and operations."""
+        with self._connect() as connection:
+            rows = connection.execute("SELECT status, COUNT(*) AS count FROM runs GROUP BY status")
+        return {str(row["status"]): int(row["count"]) for row in rows}
+
+    def dead_letter(self, key: str, error: str) -> None:
+        """Persist a failure marker without retaining arbitrary exception data."""
+        from .redaction import redact
+
+        safe_error, _ = redact(error[:500])
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO dead_letters(idempotency_key, error) VALUES (?, ?)",
+                (key, safe_error),
+            )
 
     def transition(self, key: str, target: RunStatus) -> Run:
         """Apply one legal state transition atomically."""

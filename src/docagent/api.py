@@ -35,6 +35,11 @@ def create_app(
             raise HTTPException(status_code=503, detail="kill switch is active")
         return {"status": "ready"}
 
+    @app.get("/metrics", response_class=JSONResponse)
+    async def metrics() -> dict[str, int]:
+        """Expose non-sensitive run counters for a metrics scraper."""
+        return {f"docagent_runs_{key}": value for key, value in run_store.status_counts().items()}
+
     def require_admin(request: Request) -> None:
         supplied = request.headers.get("x-docagent-admin-token", "")
         if not config.admin_token or not hmac.compare_digest(supplied, config.admin_token):

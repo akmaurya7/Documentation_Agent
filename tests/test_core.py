@@ -184,3 +184,11 @@ def test_admin_endpoints_require_token_and_control_kill_switch(tmp_path: Path) -
         "/admin/kill-switch", headers=headers, json={"enabled": True}
     )
     assert response.json() == {"enabled": True}
+
+
+def test_metrics_expose_only_run_counts(tmp_path: Path) -> None:
+    settings = Settings(webhook_secret="a" * 32, database_path=str(tmp_path / "runs.db"))
+    store = RunStore(settings.database_path)
+    store.enqueue_once("k", "d", "acme/app", "sha", "push")
+    response = TestClient(create_app(settings, store, LocalRunQueue())).get("/metrics")
+    assert response.json() == {"docagent_runs_queued": 1}

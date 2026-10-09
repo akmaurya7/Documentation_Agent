@@ -54,6 +54,7 @@ class Worker:
             if target not in terminal:
                 raise ValueError("handler returned a non-terminal state")
             return self.store.transition(running.idempotency_key, target)
-        except Exception:
+        except Exception as exc:
+            self.store.dead_letter(running.idempotency_key, str(exc))
             self.store.transition(running.idempotency_key, RunStatus.FAILED)
             return self.store.get(running.idempotency_key)
