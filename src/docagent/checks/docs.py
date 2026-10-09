@@ -93,12 +93,13 @@ def _check_mermaid(files: list[Path]) -> CheckResult:
 
 
 def _check_front_matter(files: list[Path]) -> CheckResult:
-    required = {"title:", "owner:", "last_verified_commit:", "status:"}
+    required = ("title:", "owner:", "last_verified_commit:", "status:")
     for path in files:
         text = path.read_text(encoding="utf-8")
         parts = text.split("---\n", 2)
-        if not text.startswith("---\n") or len(parts) < 3 or not required.issubset(
-            set(parts[1].splitlines())
+        metadata = parts[1].splitlines() if len(parts) >= 3 else []
+        if not text.startswith("---\n") or len(parts) < 3 or not all(
+            any(line.startswith(prefix) for line in metadata) for prefix in required
         ):
             return CheckResult(
                 "front_matter", "failed", f"missing required front matter: {path.name}"

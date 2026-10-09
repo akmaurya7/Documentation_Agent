@@ -54,3 +54,6 @@ plugins = []
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+
+[tool.coverage.run]
+omit = ["src/docagent/main.py", "src/docagent/worker_main.py", "src/docagent/agent/provider.py"]
