@@ -35,6 +35,9 @@ class RunReport(BaseModel):
     status: Literal["success", "noop", "blocked", "failed"]
     event_type: str
     head_sha: str
+    prompt_hash: str = ""
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
     phases: list[str] = Field(default_factory=list)
     files_changed: list[str] = Field(default_factory=list)
     unverified_claims_count: int = 0
@@ -54,4 +57,3 @@ class ProviderResponse(BaseModel):
     final: FinalizeInput | None = None
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
-

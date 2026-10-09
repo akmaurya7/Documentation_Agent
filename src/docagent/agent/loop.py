@@ -50,14 +50,13 @@ async def run_agent(
             _, hits = redact(str(report_data))
             if hits:
                 raise AgentLoopError("secret detected in final report")
-            report_data["notes"] = [
-                *report_data.get("notes", []),
-                f"prompt_hash={prompt_hash}",
-            ]
             return RunReport(
                 run_id=run_id,
                 event_type=event_type,
                 head_sha=head_sha,
+                prompt_hash=prompt_hash,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 **report_data,
             )
         try:

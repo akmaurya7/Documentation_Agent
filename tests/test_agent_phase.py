@@ -41,14 +41,18 @@ async def test_agent_writes_docs_and_finishes_through_finalize(tmp_path: Path) -
                 id="1",
                 name="write_doc_file",
                 arguments={"path": "docs/guide.md", "content": "# Guide\n"},
-            )
+            ),
+            input_tokens=3,
+            output_tokens=2,
         ),
         ProviderResponse(
             tool_call=ToolCall(
                 id="2",
                 name="finalize",
                 arguments={"status": "success", "files_changed": ["docs/guide.md"]},
-            )
+            ),
+            input_tokens=4,
+            output_tokens=1,
         ),
     ])
     report = await run_agent(
@@ -62,6 +66,9 @@ async def test_agent_writes_docs_and_finishes_through_finalize(tmp_path: Path) -
         head_sha="abc",
     )
     assert report.status == "success"
+    assert report.prompt_hash == digest
+    assert report.input_tokens == 7
+    assert report.output_tokens == 3
     assert (repo / "docs" / "guide.md").read_text(encoding="utf-8") == "# Guide\n"
 
 
@@ -108,5 +115,5 @@ async def test_agent_enforces_provider_token_budget(tmp_path: Path) -> None:
             run_id="r1",
             event_type="push",
             head_sha="abc",
-            max_input_tokens=10,
-        )
+        max_input_tokens=10,
+    )
