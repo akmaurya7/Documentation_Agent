@@ -5,7 +5,12 @@ from fastapi.testclient import TestClient
 
 from docagent.api import create_app
 from docagent.config import RepositoryConfig, Settings
-from docagent.guardrails import GuardrailViolation, normalize_repo_path, verify_markdown
+from docagent.guardrails import (
+    GuardrailViolation,
+    normalize_repo_path,
+    verify_markdown,
+    verify_protected_paths,
+)
 from docagent.queue import LocalRunQueue
 from docagent.redaction import redact
 from docagent.store import RunStatus, RunStore
@@ -29,6 +34,18 @@ def test_path_guard_rejects_traversal(tmp_path: Path) -> None:
 def test_markdown_guard_rejects_untrusted_url() -> None:
     with pytest.raises(GuardrailViolation):
         verify_markdown("![x](https://evil.example/x.png)", {"docs.example"})
+
+
+def test_protected_path_guard_rejects_control_plane_files() -> None:
+    with pytest.raises(GuardrailViolation):
+        verify_protected_paths([".github/workflows/ci.yml"])
+    with pytest.raises(GuardrailViolation):
+        verify_protected_paths(["pyproject.toml"])
+
+
+def test_markdown_guard_rejects_active_html() -> None:
+    with pytest.raises(GuardrailViolation):
+        verify_markdown("<script>alert(1)</script>", set())
 
 
 def test_repository_config_rejects_ci_scope() -> None:

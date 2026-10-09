@@ -47,6 +47,37 @@ def verify_scope(changed_paths: list[str], docs_root: str) -> None:
         raise GuardrailViolation("working tree changed outside docs_root")
 
 
+def verify_protected_paths(paths: list[str]) -> None:
+    """Reject changes to control-plane, dependency, and generated files."""
+    forbidden = (".git/", ".github/", ".circleci/", "build/", "dist/", "vendor/")
+    forbidden_names = {"dockerfile", "pyproject.toml", "package.json", "package-lock.json"}
+    for raw_path in paths:
+        path = raw_path.replace("\\", "/").lstrip("/").lower()
+        if path.startswith(forbidden) or Path(path).name in forbidden_names:
+            raise GuardrailViolation("protected path cannot be changed")
+
+
+def verify_limits(
+    *,
+    files: int,
+    input_tokens: int,
+    output_tokens: int,
+    tool_calls: int,
+    limits: object,
+) -> None:
+    """Apply configured hard limits without assuming a concrete settings type."""
+    values = {
+        "files": files,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "tool_calls": tool_calls,
+    }
+    for name, actual in values.items():
+        maximum = getattr(limits, name)
+        if actual > maximum:
+            raise GuardrailViolation(f"{name} limit exceeded")
+
+
 def verify_branch(branch: str, run_id: str) -> None:
     """Allow writes only to the run's dedicated branch."""
     expected = f"docs-agent/{run_id}"
