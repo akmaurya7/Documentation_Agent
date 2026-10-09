@@ -23,6 +23,13 @@ def test_context_classification_and_renames() -> None:
     assert changes[2].kind is FileKind.API
 
 
+def test_context_handles_deletions_and_reverts() -> None:
+    changes = parse_name_status("D\tdocs/old.md\nM\tsrc/reverted.py\n")
+    assert changes[0].status == "D"
+    assert changes[0].kind is FileKind.DOCS
+    assert changes[1].status == "M"
+
+
 def test_local_checkout_is_detached_and_cleaned(tmp_path: Path) -> None:
     source = tmp_path / "source"
     source.mkdir()

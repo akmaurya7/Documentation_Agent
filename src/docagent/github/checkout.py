@@ -40,11 +40,20 @@ class Checkout:
 
     def diff(self, base_sha: str, head_sha: str) -> str:
         """Return a complete patch between two commits."""
-        return self.run(["-c", "core.hooksPath=/dev/null", "diff", base_sha, head_sha], timeout=120)
+        return self.run(
+            ["-c", "core.hooksPath=/dev/null", "diff", "--no-ext-diff", base_sha, head_sha],
+            timeout=120,
+        )
 
     def name_status(self, base_sha: str, head_sha: str) -> str:
         """Return machine-readable changed paths."""
-        return self.run(["diff", "--name-status", base_sha, head_sha], timeout=120)
+        return self.run(
+            [
+                "-c", "core.hooksPath=/dev/null", "diff", "--no-ext-diff", "--name-status",
+                base_sha, head_sha,
+            ],
+            timeout=120,
+        )
 
     def read(self, relative_path: str, max_bytes: int = 1_000_000) -> bytes:
         """Read only a repository-relative regular file."""
@@ -74,7 +83,7 @@ def prepare_checkout(source: str, head_sha: str, *, timeout: int = 300) -> Check
         result = subprocess.run(
             [
                 "git", "clone", "--no-checkout", "--no-tags", "--filter=blob:none",
-                source, str(directory),
+                "--no-recurse-submodules", source, str(directory),
             ],
             check=False,
             capture_output=True,
