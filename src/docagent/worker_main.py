@@ -20,7 +20,7 @@ async def serve() -> None:
     """Consume runs continuously until the process is stopped."""
     settings = Settings()  # type: ignore[call-arg]
     worker = Worker(
-        RunStore(settings.database_path),
+        RunStore(settings.database_path, settings.database_url),
         RedisRunQueue(settings.queue_url),
         build_handler(settings),
         kill_switch=settings.kill_switch,

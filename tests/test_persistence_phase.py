@@ -38,3 +38,10 @@ def test_dead_letter_redacts_failure_details(tmp_path):
     store = RunStore(str(tmp_path / "runs.db"))
     assert store.enqueue_once("k", "d", "acme/app", "sha", "push")
     store.dead_letter("k", "token=ghp_123456789012345678901234567890")
+
+
+def test_store_accepts_sqlalchemy_database_url(tmp_path):
+    database = tmp_path / "url.db"
+    store = RunStore(str(tmp_path / "unused.db"), f"sqlite:///{database.as_posix()}")
+    assert store.enqueue_once("url", "d", "acme/app", "sha", "push")
+    assert store.get("url") is not None

@@ -1,4 +1,13 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: docagent
+      POSTGRES_USER: docagent
+      POSTGRES_PASSWORD: docagent-local-only
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   redis:
     image: redis:7.4-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -12,6 +21,7 @@ services:
       - "8000:8000"
     depends_on:
       - redis
+      - postgres
     read_only: true
     tmpfs:
       - /tmp
@@ -22,9 +32,11 @@ services:
     command: ["python", "-m", "docagent.worker_main"]
     depends_on:
       - redis
+      - postgres
     read_only: true
     tmpfs:
       - /tmp
 
 volumes:
   redis-data:
+  postgres-data:

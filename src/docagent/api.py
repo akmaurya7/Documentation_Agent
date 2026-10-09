@@ -21,7 +21,7 @@ def create_app(
 ) -> FastAPI:
     """Create an application with explicit dependencies for deterministic tests."""
     config = settings or Settings()  # type: ignore[call-arg]
-    run_store = store or RunStore(config.database_path)
+    run_store = store or RunStore(config.database_path, config.database_url)
     run_queue = queue or RedisRunQueue(config.queue_url)
     app = FastAPI(title="DocAgent", version="0.1.0")
 

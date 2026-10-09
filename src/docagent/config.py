@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     model_name: str = "claude-3-5-sonnet-latest"
     prompt_path: str = "prompts/docagent_system.md"
     database_path: str = "data/docagent.sqlite3"
+    database_url: str | None = None
     queue_url: str = "redis://localhost:6379/0"
     github_app_id: int | None = None
     github_private_key_path: str | None = None

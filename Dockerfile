@@ -4,6 +4,8 @@ COPY pyproject.toml .
 COPY src ./src
 COPY prompts ./prompts
 COPY docs ./docs
+COPY migrations ./migrations
+COPY alembic.ini .
 RUN pip install --no-cache-dir .
 RUN useradd --create-home --uid 10001 docagent
 USER docagent
