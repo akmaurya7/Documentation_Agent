@@ -6,7 +6,7 @@ DocAgent uses Python 3.12+, FastAPI, Pydantic v2, and SQLAlchemy with SQLite for
 
 ## 2026-10-09: Queue boundary
 
-Webhook handling persists an idempotency record and returns quickly. A worker boundary will consume queued records in a later milestone. No external queue is silently emulated in the request handler.
+Webhook handling persists an idempotency record and returns quickly. A worker boundary consumes queued records; no external queue is silently emulated in the request handler.
 
 ## 2026-10-09: Redis queue adapter
 
