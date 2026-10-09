@@ -33,6 +33,8 @@ def _looks_like_secret(value: str) -> bool:
     """Detect long high-entropy tokens without flagging ordinary hashes."""
     if len(value) < 24 or _PLACEHOLDER.fullmatch(value):
         return False
+    if value.isupper() and set(value) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"):
+        return False
     alphabet = len(set(value))
     if alphabet < 12:
         return False

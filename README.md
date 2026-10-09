@@ -40,3 +40,5 @@ py -3.12 -m pytest -q
 ```
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [SECURITY.md](docs/SECURITY.md), [RUNBOOK.md](docs/RUNBOOK.md), [DECISIONS.md](docs/DECISIONS.md), and [ASSUMPTIONS.md](docs/ASSUMPTIONS.md).
+
+For the complete setup, workflow, configuration, operations, and troubleshooting guide, see [USAGE_GUIDE.md](docs/USAGE_GUIDE.md).

@@ -27,6 +27,13 @@ def test_redaction_is_idempotent() -> None:
     assert "ghp_" not in once
 
 
+def test_redaction_does_not_flag_environment_setting_names() -> None:
+    value = "DOCAGENT_ALLOWED_PROMPT_HASHES"
+    redacted, hits = redact(value)
+    assert redacted == value
+    assert hits == []
+
+
 def test_path_guard_rejects_traversal(tmp_path: Path) -> None:
     with pytest.raises(GuardrailViolation):
         normalize_repo_path(tmp_path, "../secret")
