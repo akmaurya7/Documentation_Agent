@@ -13,6 +13,17 @@ py -3.12 -m uvicorn docagent.main:app --reload
 
 Check `http://127.0.0.1:8000/healthz` and `/readyz`. The webhook endpoint is `POST /webhooks/github` and requires `X-Hub-Signature-256`, `X-GitHub-Event`, and `X-GitHub-Delivery` headers.
 
+On Windows, the quickest local start is:
+
+```cmd
+run_docagent.cmd
+```
+
+This creates local settings when needed, starts Docker Compose, waits for the
+API, and opens the operations dashboard at `http://127.0.0.1:8000/dashboard`.
+You still need to add a real provider credential and GitHub App settings before
+real documentation runs can complete.
+
 ## Runtime modes
 
 The worker is fail-closed unless all GitHub App settings and a valid prompt hash are configured. With those settings it performs checkout, bounded analysis, documentation checks, and publisher operations. Shadow mode is enabled by default and stores the result without pushing a branch.

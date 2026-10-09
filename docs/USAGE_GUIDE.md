@@ -466,6 +466,50 @@ fail-closed handler and finishes queued runs as `blocked`.
 
 ## 5. Run the Docker Compose stack
 
+### One-command Windows start
+
+If you use Windows with Docker Desktop, run this from the repository root:
+
+```cmd
+run_docagent.cmd
+```
+
+The launcher copies `.env.example` to `.env` only when `.env` does not already
+exist, generates local webhook and admin secrets, calculates the current prompt
+hash, starts PostgreSQL, Redis, the API, and the worker, waits for `/healthz`,
+and opens the dashboard. It never overwrites an existing `.env` file.
+
+This removes repetitive local setup, but it cannot create third-party access
+for you. For real runs, edit `.env` once with a provider credential, GitHub App
+ID, private-key path, and the provider configuration described above.
+
+To stop the stack:
+
+```cmd
+docker compose down
+```
+
+To inspect logs:
+
+```cmd
+docker compose logs -f
+```
+
+### Operations dashboard
+
+Open [http://127.0.0.1:8000/dashboard](http://127.0.0.1:8000/dashboard) after
+the API starts. The dashboard displays:
+
+- Counts of queued, running, blocked, failed, noop, and succeeded runs.
+- The 50 most recent runs, including repository, event, commit, status, and
+  delivery ID.
+- An admin-token field used only to request the protected run list.
+
+The page does not save the admin token in local storage. Metrics are refreshed
+automatically every 10 seconds. The dashboard is an operational convenience,
+not an authentication boundary; protect the host and `/metrics` at the network
+boundary, and use HTTPS when exposing it beyond localhost.
+
 Compose starts PostgreSQL, Redis, the API, and the worker:
 
 ```powershell

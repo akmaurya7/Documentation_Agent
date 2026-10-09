@@ -218,6 +218,15 @@ def test_metrics_expose_only_run_counts(tmp_path: Path) -> None:
     assert response.json() == {"docagent_runs_queued": 1}
 
 
+def test_dashboard_is_available_without_exposing_admin_data(tmp_path: Path) -> None:
+    settings = Settings(webhook_secret="a" * 32, database_path=str(tmp_path / "runs.db"))
+    client = TestClient(create_app(settings, queue=LocalRunQueue()))
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert "DocAgent dashboard" in response.text
+    assert "X-DocAgent-Admin-Token" in response.text
+
+
 def test_admin_rerun_requeues_only_terminal_non_successful_runs(tmp_path: Path) -> None:
     settings = Settings(
         webhook_secret="a" * 32,

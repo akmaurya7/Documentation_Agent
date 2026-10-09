@@ -6,9 +6,10 @@ import hmac
 import json
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from .config import Settings
+from .dashboard import DASHBOARD_HTML
 from .guardrails import verify_signature
 from .queue import RedisRunQueue, RunQueue
 from .store import RunStore
@@ -28,6 +29,11 @@ def create_app(
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard() -> str:
+        """Serve the read-only operations dashboard shell."""
+        return DASHBOARD_HTML
 
     @app.get("/readyz")
     async def readyz() -> dict[str, str]:
