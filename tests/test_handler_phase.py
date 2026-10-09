@@ -1,5 +1,6 @@
 import asyncio
 
+from docagent.config import RunLimits
 from docagent.handler import DocumentationRunHandler
 from docagent.store import Run, RunStatus
 
@@ -21,3 +22,17 @@ def test_handler_blocks_missing_source_metadata() -> None:
         shadow=True,
     )
     assert asyncio.run(handler.process(run)) is RunStatus.BLOCKED
+
+
+def test_handler_accepts_explicit_limits() -> None:
+    handler = DocumentationRunHandler(
+        provider=object(),  # type: ignore[arg-type]
+        publisher=NeverPublisher(),  # type: ignore[arg-type]
+        prompt_path="missing",
+        allowed_prompt_hashes=set(),
+        model="fake",
+        docs_root="docs",
+        shadow=True,
+        limits=RunLimits(files=1),
+    )
+    assert handler.limits.files == 1

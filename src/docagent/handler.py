@@ -8,6 +8,7 @@ from .agent.loop import run_agent
 from .agent.provider import Provider
 from .agent.tools import ToolContext
 from .checks.docs import run_doc_checks
+from .config import RunLimits
 from .context import FileKind, parse_name_status
 from .github.checkout import CheckoutError, cleanup_checkout, prepare_checkout
 from .publisher import Publisher
@@ -28,6 +29,7 @@ class DocumentationRunHandler:
         docs_root: str,
         shadow: bool,
         allowed_domains: set[str] | None = None,
+        limits: RunLimits | None = None,
     ) -> None:
         self.provider = provider
         self.publisher = publisher
@@ -37,6 +39,7 @@ class DocumentationRunHandler:
         self.docs_root = docs_root
         self.shadow = shadow
         self.allowed_domains = allowed_domains or set()
+        self.limits = limits or RunLimits()
 
     async def process(self, run: Run) -> RunStatus:
         """Process one persisted run and return a terminal state."""
@@ -46,18 +49,26 @@ class DocumentationRunHandler:
         try:
             checkout = await asyncio.to_thread(prepare_checkout, run.source_url, run.head_sha)
             changes = parse_name_status(checkout.name_status(run.base_sha, run.head_sha))
+            if len(changes) > self.limits.files:
+                return RunStatus.BLOCKED
             if not changes or all(change.kind is FileKind.DOCS for change in changes):
                 return RunStatus.NOOP
             context = ToolContext(checkout, self.docs_root, self.allowed_domains)
-            report = await run_agent(
-                provider=self.provider,
-                context=context,
-                prompt_path=self.prompt_path,
-                allowed_prompt_hashes=self.allowed_prompt_hashes,
-                model=self.model,
-                run_id=run.idempotency_key,
-                event_type=run.event_type,
-                head_sha=run.head_sha,
+            report = await asyncio.wait_for(
+                run_agent(
+                    provider=self.provider,
+                    context=context,
+                    prompt_path=self.prompt_path,
+                    allowed_prompt_hashes=self.allowed_prompt_hashes,
+                    model=self.model,
+                    run_id=run.idempotency_key,
+                    event_type=run.event_type,
+                    head_sha=run.head_sha,
+                    max_tool_calls=self.limits.tool_calls,
+                    max_input_tokens=self.limits.input_tokens,
+                    max_output_tokens=self.limits.output_tokens,
+                ),
+                timeout=self.limits.wall_time_seconds,
             )
             if report.status in {"blocked", "failed", "noop"}:
                 return RunStatus(report.status)

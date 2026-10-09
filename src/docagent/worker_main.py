@@ -48,6 +48,7 @@ def build_handler(settings: Settings) -> RunHandler:
         docs_root=settings.docs_root,
         shadow=settings.shadow,
         allowed_domains=settings.allowed_external_domains,
+        limits=settings.limits,
     )
 
 

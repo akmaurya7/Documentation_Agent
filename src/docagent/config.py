@@ -66,3 +66,4 @@ class Settings(BaseSettings):
     allowed_external_domains: set[str] = Field(default_factory=set)
     kill_switch: bool = False
     max_webhook_bytes: int = Field(default=1_000_000, ge=1_024)
+    limits: RunLimits = Field(default_factory=RunLimits)
