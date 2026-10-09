@@ -26,7 +26,7 @@ For the local stack, copy `.env.example` to `.env`, set a real webhook secret, a
 - Create a GitHub App with metadata read, contents read/write, and pull-request write permissions only.
 - Configure the webhook secret, app ID, private-key path, bot login, Anthropic credentials, prompt hash allowlist, and an admin token through the environment.
 - Start with `DOCAGENT_SHADOW=true`; verify reports and checks before enabling publication.
-- Put the SQLite database on durable storage for a single instance. PostgreSQL/Alembic migration is still required before multi-instance production.
+- Set `DOCAGENT_DATABASE_URL` to PostgreSQL and run `alembic upgrade head` before multi-instance production. SQLite remains suitable only for single-instance local use.
 - Keep Redis durable and protected; the worker treats queue failures as failures and records dead letters.
 - Protect `/admin/*` and `/metrics` at the network boundary in addition to the admin token.
 

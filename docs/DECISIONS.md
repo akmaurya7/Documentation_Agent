@@ -2,7 +2,7 @@
 
 ## 2026-10-09: Python service foundation
 
-DocAgent uses Python 3.12+, FastAPI, Pydantic v2, and SQLite for the local persistence foundation. The prompt specifies PostgreSQL for production; the first slice keeps the persistence interface small so PostgreSQL/Alembic can be added without changing webhook behavior.
+DocAgent uses Python 3.12+, FastAPI, Pydantic v2, and SQLAlchemy with SQLite for local development and PostgreSQL for production. Alembic owns the production schema migration path without changing webhook behavior.
 
 ## 2026-10-09: Queue boundary
 
