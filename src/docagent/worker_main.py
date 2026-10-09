@@ -20,16 +20,16 @@ async def serve() -> None:
     """Consume runs continuously until the process is stopped."""
     settings = Settings()  # type: ignore[call-arg]
     worker = Worker(
-        RunStore(settings.database_path, settings.database_url),
+        (store := RunStore(settings.database_path, settings.database_url)),
         RedisRunQueue(settings.queue_url),
-        build_handler(settings),
+        build_handler(settings, store),
         kill_switch=settings.kill_switch,
     )
     while True:
         await worker.run_once(timeout_seconds=5)
 
 
-def build_handler(settings: Settings) -> RunHandler:
+def build_handler(settings: Settings, store: RunStore | None = None) -> RunHandler:
     """Build the real handler only when every required integration setting exists."""
     if not settings.github_app_id or not settings.github_private_key_path:
         return FailClosedHandler()
@@ -50,6 +50,7 @@ def build_handler(settings: Settings) -> RunHandler:
         allowed_domains=settings.allowed_external_domains,
         limits=settings.limits,
         token_provider=api.installation_token,
+        store=store,
     )
 
 

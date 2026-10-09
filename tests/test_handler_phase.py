@@ -2,7 +2,7 @@ import asyncio
 
 from docagent.config import RunLimits
 from docagent.handler import DocumentationRunHandler
-from docagent.store import Run, RunStatus
+from docagent.store import Run, RunStatus, RunStore
 
 
 class NeverPublisher:
@@ -49,3 +49,18 @@ def test_handler_defaults_to_unauthenticated_checkout() -> None:
         shadow=True,
     )
     assert handler.token_provider is None
+
+
+def test_handler_accepts_report_store(tmp_path) -> None:
+    store = RunStore(str(tmp_path / "runs.db"))
+    handler = DocumentationRunHandler(
+        provider=object(),  # type: ignore[arg-type]
+        publisher=NeverPublisher(),  # type: ignore[arg-type]
+        prompt_path="missing",
+        allowed_prompt_hashes=set(),
+        model="fake",
+        docs_root="docs",
+        shadow=True,
+        store=store,
+    )
+    assert handler.store is store

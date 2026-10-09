@@ -18,7 +18,7 @@ from .github.checkout import (
     prepare_checkout,
 )
 from .publisher import Publisher
-from .store import Run, RunStatus
+from .store import Run, RunStatus, RunStore
 
 
 class DocumentationRunHandler:
@@ -37,6 +37,7 @@ class DocumentationRunHandler:
         allowed_domains: set[str] | None = None,
         limits: RunLimits | None = None,
         token_provider: Callable[[], Awaitable[str]] | None = None,
+        store: RunStore | None = None,
     ) -> None:
         self.provider = provider
         self.publisher = publisher
@@ -48,6 +49,7 @@ class DocumentationRunHandler:
         self.allowed_domains = allowed_domains or set()
         self.limits = limits or RunLimits()
         self.token_provider = token_provider
+        self.store = store
 
     async def process(self, run: Run) -> RunStatus:
         """Process one persisted run and return a terminal state."""
@@ -84,6 +86,8 @@ class DocumentationRunHandler:
                 ),
                 timeout=self.limits.wall_time_seconds,
             )
+            if self.store is not None:
+                self.store.save_report(run.idempotency_key, report.model_dump(mode="json"))
             if report.status in {"blocked", "failed", "noop"}:
                 return RunStatus(report.status)
             checks = await asyncio.to_thread(
