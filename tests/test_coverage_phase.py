@@ -6,6 +6,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+import redis.asyncio
 from fastapi.testclient import TestClient
 
 from docagent.agent.models import RunReport
@@ -20,7 +21,7 @@ from docagent.github.pr_api import GitHubPullRequestAPI
 from docagent.publisher import Publisher
 from docagent.queue import LocalRunQueue, RedisRunQueue
 from docagent.redaction import redact
-from docagent.store import RunStatus, RunStore
+from docagent.store import Run, RunStatus, RunStore
 from docagent.worker import Worker
 
 
@@ -79,9 +80,6 @@ def test_documentation_checks_cover_success_and_link_failures(tmp_path: Path) ->
 
 
 def test_redisc_queue_round_trip(monkeypatch) -> None:
-    import redis.asyncio
-    from docagent.store import Run
-
     items = []
 
     class FakeRedis:
