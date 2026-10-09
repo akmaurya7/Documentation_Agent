@@ -297,6 +297,7 @@ async def test_github_adapters_cover_authenticated_requests(monkeypatch) -> None
     assert (await client.repository(1, "acme", "app"))["full_name"] == "acme/app"
     assert await client.open_pull_requests(1, "acme/app") == []
     assert (await client.create_pull_request(1, "acme/app", "t", "b", "h", "main"))["url"]
+    assert (await client.update_pull_request(1, "acme/app", 1, "t", "b"))["full_name"] == "acme/app"
     adapter = GitHubPullRequestAPI(client, 1, "docagent[bot]")
     assert await adapter.find_open_agent_pr("acme/app", "sha") is None
     assert await adapter.installation_token() == "installation"

@@ -60,6 +60,13 @@ class Publisher:
             return PublishResult("blocked", reason="secret detected in pull-request body")
         existing = await self.api.find_open_agent_pr(repo, head_sha)
         if existing is not None:
+            update = getattr(self.api, "update_agent_pr", None)
+            number = existing.get("number")
+            if callable(update) and isinstance(number, int):
+                updated = await update(repo, number, title, body)
+                return PublishResult(
+                    "updated", pull_request_url=str(updated.get("url", existing.get("url", "")))
+                )
             return PublishResult("existing", pull_request_url=str(existing.get("url", "")))
         branch = f"docs-agent/{run_id}"
         try:

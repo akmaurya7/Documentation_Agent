@@ -82,6 +82,21 @@ class GitHubClient:
             raise GitHubClientError("GitHub returned an invalid pull-request response")
         return data
 
+    async def update_pull_request(
+        self, installation_id: int, repo: str, number: int, title: str, body: str
+    ) -> dict[str, Any]:
+        """Update an existing documentation PR without changing its base branch."""
+        token = await self.installation_token(installation_id)
+        data = await self._request(
+            "PATCH",
+            f"/repos/{repo}/pulls/{number}",
+            headers=self._token_headers(token),
+            body={"title": title, "body": body},
+        )
+        if not isinstance(data, dict):
+            raise GitHubClientError("GitHub returned an invalid pull-request response")
+        return data
+
     async def _request(
         self, method: str, path: str, *, headers: dict[str, str], body: dict[str, Any] | None = None
     ) -> Any:

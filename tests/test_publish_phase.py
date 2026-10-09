@@ -75,3 +75,22 @@ def test_publisher_rejects_secret_in_pull_request_body(tmp_path: Path) -> None:
     )
     assert result.status == "blocked"
     assert api.created is False
+
+
+def test_publisher_updates_existing_pr_when_supported(tmp_path: Path) -> None:
+    class UpdatingAPI(FakePRAPI):
+        async def find_open_agent_pr(self, repo: str, head_sha: str):
+            return {"number": 7, "url": "https://github.example/pr/7"}
+
+        async def update_agent_pr(self, repo: str, number: int, title: str, body: str):
+            assert number == 7
+            return {"url": "https://github.example/pr/7"}
+
+    result = asyncio.run(
+        Publisher(UpdatingAPI()).publish(
+            Checkout(tmp_path), run_id="r1", repo="acme/app", head_sha="abc",
+            base_branch="main", docs_root="docs", title="update guide", body="body",
+            checks=type("Checks", (), {"failed": []})(), shadow=False,
+        )
+    )
+    assert result.status == "updated"

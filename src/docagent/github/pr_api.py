@@ -33,3 +33,11 @@ class GitHubPullRequestAPI:
         return await self.client.create_pull_request(
             self.installation_id, repo, title, body, head, base
         )
+
+    async def update_agent_pr(
+        self, repo: str, number: int, title: str, body: str
+    ) -> dict[str, Any]:
+        """Update the existing bot-created documentation PR."""
+        return await self.client.update_pull_request(
+            self.installation_id, repo, number, title, body
+        )
