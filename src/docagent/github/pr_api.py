@@ -15,6 +15,10 @@ class GitHubPullRequestAPI:
         self.installation_id = installation_id
         self.bot_login = bot_login
 
+    async def installation_token(self) -> str:
+        """Return the short-lived token for Git transport authentication."""
+        return (await self.client.installation_token(self.installation_id)).value
+
     async def find_open_agent_pr(self, repo: str, head_sha: str) -> dict[str, Any] | None:
         for pull_request in await self.client.open_pull_requests(self.installation_id, repo):
             body = str(pull_request.get("body", ""))

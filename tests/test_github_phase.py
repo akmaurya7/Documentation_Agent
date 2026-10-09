@@ -3,7 +3,11 @@ from pathlib import Path
 
 from docagent.context import FileKind, classify_path, parse_name_status
 from docagent.github.auth import GitHubAppAuth, InstallationToken
-from docagent.github.checkout import cleanup_checkout, prepare_checkout
+from docagent.github.checkout import (
+    cleanup_checkout,
+    prepare_authenticated_checkout,
+    prepare_checkout,
+)
 
 
 def test_app_jwt_and_token_cache() -> None:
@@ -54,3 +58,28 @@ def test_local_checkout_is_detached_and_cleaned(tmp_path: Path) -> None:
         path = checkout.path
         cleanup_checkout(checkout)
         assert not path.exists()
+
+
+def test_authenticated_checkout_cleans_credential_transport(tmp_path: Path) -> None:
+    source = tmp_path / "source-auth"
+    source.mkdir()
+    subprocess.run(["git", "init", str(source)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(source), "config", "user.email", "test@example.com"], check=True
+    )
+    subprocess.run(["git", "-C", str(source), "config", "user.name", "Test"], check=True)
+    (source / "README.md").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "add", "README.md"], check=True)
+    subprocess.run(
+        ["git", "-C", str(source), "commit", "-m", "initial"], check=True, capture_output=True
+    )
+    sha = subprocess.check_output(
+        ["git", "-C", str(source), "rev-parse", "HEAD"], text=True
+    ).strip()
+    checkout = prepare_authenticated_checkout(str(source), sha, "temporary-token")
+    root = checkout.cleanup_path
+    try:
+        assert checkout.read("README.md") == b"hello\n"
+    finally:
+        cleanup_checkout(checkout)
+        assert not root.exists()

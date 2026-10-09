@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 from .agent.loop import run_agent
 from .agent.provider import Provider
@@ -10,7 +11,12 @@ from .agent.tools import ToolContext
 from .checks.docs import run_doc_checks
 from .config import RunLimits
 from .context import FileKind, parse_name_status
-from .github.checkout import CheckoutError, cleanup_checkout, prepare_checkout
+from .github.checkout import (
+    CheckoutError,
+    cleanup_checkout,
+    prepare_authenticated_checkout,
+    prepare_checkout,
+)
 from .publisher import Publisher
 from .store import Run, RunStatus
 
@@ -30,6 +36,7 @@ class DocumentationRunHandler:
         shadow: bool,
         allowed_domains: set[str] | None = None,
         limits: RunLimits | None = None,
+        token_provider: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         self.provider = provider
         self.publisher = publisher
@@ -40,6 +47,7 @@ class DocumentationRunHandler:
         self.shadow = shadow
         self.allowed_domains = allowed_domains or set()
         self.limits = limits or RunLimits()
+        self.token_provider = token_provider
 
     async def process(self, run: Run) -> RunStatus:
         """Process one persisted run and return a terminal state."""
@@ -47,7 +55,13 @@ class DocumentationRunHandler:
             return RunStatus.BLOCKED
         checkout = None
         try:
-            checkout = await asyncio.to_thread(prepare_checkout, run.source_url, run.head_sha)
+            if self.token_provider is None:
+                checkout = await asyncio.to_thread(prepare_checkout, run.source_url, run.head_sha)
+            else:
+                token = await self.token_provider()
+                checkout = await asyncio.to_thread(
+                    prepare_authenticated_checkout, run.source_url, run.head_sha, token
+                )
             changes = parse_name_status(checkout.name_status(run.base_sha, run.head_sha))
             if len(changes) > self.limits.files:
                 return RunStatus.BLOCKED

@@ -6,6 +6,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -20,11 +21,22 @@ class CheckoutError(RuntimeError):
 class Checkout:
     """Temporary detached checkout with hooks and submodules disabled."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        askpass_files: tuple[Path, Path] | None = None,
+        cleanup_path: Path | None = None,
+    ) -> None:
         self.path = path
+        self._askpass_files = askpass_files
+        self.cleanup_path = cleanup_path or path
 
     def run(self, args: list[str], timeout: int = 60) -> str:
         """Run a fixed-argument git command without a shell."""
+        environment = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
+        if self._askpass_files is not None:
+            script, _token = self._askpass_files
+            environment["GIT_ASKPASS"] = f'"{sys.executable}" "{script}"'
         result = subprocess.run(
             ["git", *args],
             cwd=self.path,
@@ -32,7 +44,7 @@ class Checkout:
             capture_output=True,
             text=True,
             timeout=timeout,
-            env={**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"},
+            env=environment,
         )
         if result.returncode != 0:
             raise CheckoutError("git command failed")
@@ -107,9 +119,60 @@ def prepare_checkout(source: str, head_sha: str, *, timeout: int = 300) -> Check
         raise
 
 
+def prepare_authenticated_checkout(
+    source: str, head_sha: str, credential: str, *, timeout: int = 300
+) -> Checkout:
+    """Clone and retain a temporary askpass credential for later Git pushes."""
+    directory = Path(tempfile.mkdtemp(prefix="docagent-"))
+    script = directory / "askpass.py"
+    token_file = directory / "askpass.token"
+    try:
+        token_file.write_text(credential, encoding="utf-8")
+        try:
+            token_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+        script.write_text(
+            "from pathlib import Path\n"
+            "import sys\n"
+            "sys.stdout.write(Path(__file__).with_suffix('.token').read_text())\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                "git", "clone", "--no-checkout", "--no-tags", "--filter=blob:none",
+                "--no-recurse-submodules", source, str(directory / "repo"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env={
+                **os.environ,
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_TERMINAL_PROMPT": "0",
+                "GIT_ASKPASS": f'"{sys.executable}" "{script}"',
+            },
+        )
+        if result.returncode != 0:
+            raise CheckoutError("authenticated repository clone failed")
+        authenticated = Checkout(directory / "repo", (script, token_file), directory)
+        authenticated.run(
+            [
+                "-c", "core.hooksPath=/dev/null", "-c", "submodule.recurse=false",
+                "checkout", "--detach", head_sha,
+            ],
+            timeout=timeout,
+        )
+        return authenticated
+    except Exception:
+        _cleanup(directory)
+        raise
+
+
 def cleanup_checkout(checkout: Checkout) -> None:
     """Remove a checkout after the run has completed."""
-    _cleanup(checkout.path)
+    _cleanup(checkout.cleanup_path)
 
 
 def _cleanup(path: Path) -> None:

@@ -49,6 +49,7 @@ def build_handler(settings: Settings) -> RunHandler:
         shadow=settings.shadow,
         allowed_domains=settings.allowed_external_domains,
         limits=settings.limits,
+        token_provider=api.installation_token,
     )
 
 
