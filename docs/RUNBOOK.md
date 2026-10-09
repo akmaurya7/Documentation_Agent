@@ -13,7 +13,8 @@ Run `python -m docagent.worker_main` in a separate process. Redis is required
 for the production queue. A missing GitHub App configuration intentionally
 selects the fail-closed handler. Inspect `/metrics` and the authenticated
 `/admin/runs` endpoint for state; failed worker attempts are recorded as dead
-letters and must be investigated before retrying.
+letters after the configured `DOCAGENT_MAX_ATTEMPTS` bound. Earlier transient
+exceptions are requeued automatically and each retry is audited.
 
 ## Safe rollout
 
