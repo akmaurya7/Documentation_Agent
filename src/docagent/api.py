@@ -45,7 +45,14 @@ def create_app(
             raise HTTPException(status_code=401, detail="invalid signature")
         event = request.headers.get("x-github-event", "")
         delivery = request.headers.get("x-github-delivery", "")
-        payload: dict[str, Any] = json.loads(body)
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="invalid JSON payload") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="webhook payload must be an object")
+        if config.kill_switch:
+            return JSONResponse({"accepted": False, "reason": "kill switch is active"}, status_code=202)
         repo = str(payload.get("repository", {}).get("full_name", ""))
         pull_request = payload.get("pull_request", {})
         head_sha = str(payload.get("after") or pull_request.get("head", {}).get("sha", ""))
@@ -59,8 +66,11 @@ def create_app(
         actor = str(payload.get("sender", {}).get("login", ""))
         if not delivery or not repo or not head_sha:
             raise HTTPException(status_code=400, detail="missing delivery, repository, or head sha")
-        if actor == config.app_name or "[skip-docs]" in str(payload):
+        if actor in {config.app_name, config.github_bot_login} or "[skip-docs]" in str(payload):
             return JSONResponse({"accepted": False, "reason": "filtered"}, status_code=202)
+        head_repo = str(pull_request.get("head", {}).get("repo", {}).get("full_name", ""))
+        if event == "pull_request" and head_repo and head_repo != repo:
+            return JSONResponse({"accepted": False, "reason": "fork"}, status_code=202)
         key = f"{repo}:{head_sha}:{event}"
         accepted = run_store.enqueue_once(
             key, delivery, repo, head_sha, event, source_url, base_sha, base_branch

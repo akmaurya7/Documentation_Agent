@@ -90,6 +90,66 @@ def test_invalid_webhook_signature_is_rejected(tmp_path: Path) -> None:
     assert response.status_code == 401
 
 
+def test_webhook_rejects_bad_json_and_honors_kill_switch(tmp_path: Path) -> None:
+    import hashlib
+    import hmac
+
+    secret = "a" * 32
+    settings = Settings(
+        webhook_secret=secret, database_path=str(tmp_path / "runs.db"), kill_switch=True
+    )
+    client = TestClient(create_app(settings, queue=LocalRunQueue()))
+    body = b"not-json"
+    signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    response = client.post(
+        "/webhooks/github",
+        content=body,
+        headers={"x-hub-signature-256": signature, "x-github-event": "push"},
+    )
+    assert response.status_code == 400
+
+    body = b"{}"
+    signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    response = client.post(
+        "/webhooks/github",
+        content=body,
+        headers={"x-hub-signature-256": signature, "x-github-event": "push"},
+    )
+    assert response.status_code == 202
+    assert response.json()["reason"] == "kill switch is active"
+
+
+def test_fork_pull_request_is_comment_only(tmp_path: Path) -> None:
+    import hashlib
+    import hmac
+    import json
+
+    secret = "a" * 32
+    settings = Settings(webhook_secret=secret, database_path=str(tmp_path / "runs.db"))
+    client = TestClient(create_app(settings, queue=LocalRunQueue()))
+    payload = {
+        "pull_request": {
+            "head": {"sha": "abc", "repo": {"full_name": "fork/app"}},
+            "base": {"sha": "base", "ref": "main"},
+        },
+        "repository": {"full_name": "acme/app"},
+        "sender": {"login": "dev"},
+    }
+    body = json.dumps(payload).encode()
+    signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    response = client.post(
+        "/webhooks/github",
+        content=body,
+        headers={
+            "x-hub-signature-256": signature,
+            "x-github-event": "pull_request",
+            "x-github-delivery": "d1",
+        },
+    )
+    assert response.status_code == 202
+    assert response.json() == {"accepted": False, "reason": "fork"}
+
+
 def test_worker_fail_closes_and_is_idempotent(tmp_path: Path) -> None:
     import asyncio
 
