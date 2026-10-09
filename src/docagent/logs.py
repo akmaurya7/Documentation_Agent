@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +45,8 @@ class FileLogSource:
             raw = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             raise LogSafetyError("log cannot be safely read") from exc
+        if re.search(r"(?i)\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b|\b(?:\+?\d[\d ()-]{8,}\d)\b", raw):
+            raise LogSafetyError("personal data detected in log")
         safe, hits = redact(raw)
         if contains_secret(safe):
             raise LogSafetyError("log redaction could not be verified")

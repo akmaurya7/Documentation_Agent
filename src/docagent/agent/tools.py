@@ -9,7 +9,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..github.checkout import Checkout, CheckoutError
-from ..guardrails import GuardrailViolation, normalize_repo_path, verify_markdown
+from ..guardrails import (
+    GuardrailViolation,
+    normalize_repo_path,
+    verify_manual_blocks,
+    verify_markdown,
+)
 from ..redaction import redact
 from .models import FinalizeInput
 
@@ -102,6 +107,10 @@ class ToolContext:
             if redact(write_args.content)[1]:
                 raise ToolError("secret detected in documentation")
             destination = normalize_repo_path(self.checkout.path, write_args.path)
+            if destination.exists():
+                verify_manual_blocks(
+                    destination.read_text(encoding="utf-8"), write_args.content
+                )
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(write_args.content, encoding="utf-8", newline="\n")
             return {"path": write_args.path, "bytes": len(write_args.content.encode("utf-8"))}

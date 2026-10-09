@@ -24,3 +24,9 @@ def test_file_log_source_rejects_escape_and_invalid_utf8(tmp_path: Path) -> None
     bad.write_bytes(b"\xff")
     with pytest.raises(LogSafetyError):
         FileLogSource(tmp_path).read("bad.log")
+
+
+def test_file_log_source_stops_on_personal_data(tmp_path: Path) -> None:
+    (tmp_path / "pii.log").write_text("contact alice@example.com\n", encoding="utf-8")
+    with pytest.raises(LogSafetyError, match="personal data"):
+        FileLogSource(tmp_path).read("pii.log")

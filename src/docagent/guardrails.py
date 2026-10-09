@@ -93,3 +93,14 @@ def verify_markdown(text: str, allowed_domains: set[str]) -> None:
         domain = (urlparse(match.group(1)).hostname or "").lower()
         if domain not in {item.lower() for item in allowed_domains}:
             raise GuardrailViolation("external markdown URL is not allowlisted")
+
+
+def verify_manual_blocks(previous: str, proposed: str) -> None:
+    """Require protected manual block contents to remain byte-for-byte identical."""
+    marker = re.compile(
+        r"<!--\s*DOCAGENT:MANUAL\s*-->([\s\S]*?)<!--\s*/DOCAGENT:MANUAL\s*-->"
+    )
+    previous_blocks = marker.findall(previous)
+    proposed_blocks = marker.findall(proposed)
+    if previous_blocks != proposed_blocks:
+        raise GuardrailViolation("manual documentation block was modified")

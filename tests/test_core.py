@@ -8,6 +8,7 @@ from docagent.config import RepositoryConfig, Settings
 from docagent.guardrails import (
     GuardrailViolation,
     normalize_repo_path,
+    verify_manual_blocks,
     verify_markdown,
     verify_protected_paths,
 )
@@ -46,6 +47,13 @@ def test_protected_path_guard_rejects_control_plane_files() -> None:
 def test_markdown_guard_rejects_active_html() -> None:
     with pytest.raises(GuardrailViolation):
         verify_markdown("<script>alert(1)</script>", set())
+
+
+def test_manual_documentation_blocks_are_immutable() -> None:
+    previous = "before\n<!-- DOCAGENT:MANUAL -->keep\n<!-- /DOCAGENT:MANUAL -->\n"
+    verify_manual_blocks(previous, previous + "after\n")
+    with pytest.raises(GuardrailViolation):
+        verify_manual_blocks(previous, "<!-- DOCAGENT:MANUAL -->changed\n<!-- /DOCAGENT:MANUAL -->")
 
 
 def test_repository_config_rejects_ci_scope() -> None:
