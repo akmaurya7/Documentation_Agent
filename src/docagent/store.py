@@ -114,6 +114,7 @@ class RunStore:
                         source_url, base_sha, base_branch,
                     ),
                 )
+            self.audit(key, "run.queued", {"event_type": event_type})
             return True
         except sqlite3.IntegrityError:
             return False
@@ -219,6 +220,7 @@ class RunStore:
             connection.execute(
                 "UPDATE runs SET status = ? WHERE idempotency_key = ?", (target, key)
             )
+        self.audit(key, "run.transition", {"from": current.status.value, "to": target.value})
         updated = self.get(key)
         if updated is None:
             raise RuntimeError("run disappeared during transition")

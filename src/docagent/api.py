@@ -106,14 +106,14 @@ def create_app(
         accepted = run_store.enqueue_once(
             key, delivery, repo, head_sha, event, source_url, base_sha, base_branch
         )
-        if accepted:
-            queued_run = run_store.get(key)
-            if queued_run is None:
-                raise HTTPException(status_code=503, detail="run could not be persisted")
+        queued_run = run_store.get(key)
+        if queued_run is None:
+            raise HTTPException(status_code=503, detail="run could not be persisted")
+        if accepted or queued_run.status.value == "queued":
             try:
                 await run_queue.enqueue(queued_run)
             except Exception as exc:
                 raise HTTPException(status_code=503, detail="queue unavailable") from exc
-        return JSONResponse({"accepted": accepted, "queued": accepted}, status_code=202)
+        return JSONResponse({"accepted": accepted, "queued": True}, status_code=202)
 
     return app

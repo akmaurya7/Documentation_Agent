@@ -77,6 +77,7 @@ def test_webhook_signature_and_dedupe(tmp_path: Path) -> None:
     assert client.post("/webhooks/github", content=body, headers=headers).status_code == 202
     replay = client.post("/webhooks/github", content=body, headers=headers)
     assert replay.json()["accepted"] is False
+    assert replay.json()["queued"] is True
 
 
 def test_invalid_webhook_signature_is_rejected(tmp_path: Path) -> None:

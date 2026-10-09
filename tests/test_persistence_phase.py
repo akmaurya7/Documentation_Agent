@@ -16,7 +16,8 @@ def test_reports_and_audit_events_are_durable(tmp_path):
     run = reopened.get("k")
     assert run is not None
     assert json.loads(run.report_json) == report
-    assert reopened.audit_events("k") == [("run.queued", '{"reason":"webhook"}')]
+    assert reopened.audit_events("k")[-1] == ("run.queued", '{"reason":"webhook"}')
+    assert reopened.audit_events("k")[0] == ("run.queued", '{"event_type":"push"}')
 
 
 def test_report_requires_existing_run(tmp_path):
