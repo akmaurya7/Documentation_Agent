@@ -24,6 +24,7 @@ async def serve() -> None:
         RedisRunQueue(settings.queue_url),
         build_handler(settings, store),
         kill_switch=settings.kill_switch,
+        max_attempts=settings.max_attempts,
     )
     while True:
         await worker.run_once(timeout_seconds=5)

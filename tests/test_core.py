@@ -174,6 +174,14 @@ def test_worker_fail_closes_and_is_idempotent(tmp_path: Path) -> None:
     assert asyncio.run(Worker(store, queue, FailClosedHandler()).run_once()) is None
 
 
+def test_worker_stops_when_shared_kill_switch_is_enabled(tmp_path: Path) -> None:
+    import asyncio
+
+    store = RunStore(str(tmp_path / "runs.db"))
+    store.set_kill_switch(True)
+    assert asyncio.run(Worker(store, LocalRunQueue(), FailClosedHandler()).run_once()) is None
+
+
 def test_admin_endpoints_require_token_and_control_kill_switch(tmp_path: Path) -> None:
     settings = Settings(
         webhook_secret="a" * 32,

@@ -180,9 +180,34 @@ def test_local_queue_and_worker_failure_are_safe(tmp_path: Path) -> None:
                 raise RuntimeError("provider failure")
 
         await queue.enqueue(store.get("k"))  # type: ignore[arg-type]
-        result = await Worker(store, queue, FailingHandler()).run_once()
+        result = await Worker(store, queue, FailingHandler(), max_attempts=1).run_once()
         assert result is not None and result.status is RunStatus.FAILED
         assert await queue.dequeue(timeout_seconds=0) is None
+
+    asyncio.run(exercise())
+
+
+def test_worker_retries_exception_and_requeues(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        store = RunStore(str(tmp_path / "runs.db"))
+        queue = LocalRunQueue()
+        assert store.enqueue_once("retry", "d", "r", "sha", "push")
+        calls = 0
+
+        class FlakyHandler:
+            async def process(self, run):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise RuntimeError("temporary provider failure")
+                return RunStatus.NOOP
+
+        await queue.enqueue(store.get("retry"))  # type: ignore[arg-type]
+        worker = Worker(store, queue, FlakyHandler(), max_attempts=2)
+        first = await worker.run_once()
+        assert first is not None and first.status is RunStatus.QUEUED
+        second = await worker.run_once()
+        assert second is not None and second.status is RunStatus.NOOP
 
     asyncio.run(exercise())
 

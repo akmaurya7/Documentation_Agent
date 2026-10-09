@@ -40,6 +40,29 @@ def test_dead_letter_redacts_failure_details(tmp_path):
     store.dead_letter("k", "token=ghp_123456789012345678901234567890")
 
 
+def test_retry_is_bounded_and_dead_letters_only_at_limit(tmp_path):
+    store = RunStore(str(tmp_path / "runs.db"))
+    assert store.enqueue_once("k", "d", "acme/app", "sha", "push")
+    store.transition("k", RunStatus.RUNNING)
+    first = store.retry_or_fail("k", "temporary", max_attempts=2)
+    assert first.status is RunStatus.QUEUED
+    assert first.attempts == 1
+    store.transition("k", RunStatus.RUNNING)
+    second = store.retry_or_fail("k", "permanent", max_attempts=2)
+    assert second.status is RunStatus.FAILED
+    assert second.attempts == 2
+    assert store.audit_events("k")[-1][0] == "run.dead_lettered"
+
+
+def test_retry_rejects_invalid_bounds_and_non_running_runs(tmp_path):
+    store = RunStore(str(tmp_path / "runs.db"))
+    assert store.enqueue_once("k", "d", "acme/app", "sha", "push")
+    with pytest.raises(ValueError):
+        store.retry_or_fail("k", "temporary", max_attempts=0)
+    with pytest.raises(ValueError):
+        store.retry_or_fail("k", "temporary", max_attempts=2)
+
+
 def test_store_accepts_sqlalchemy_database_url(tmp_path):
     database = tmp_path / "url.db"
     store = RunStore(str(tmp_path / "unused.db"), f"sqlite:///{database.as_posix()}")

@@ -27,12 +27,18 @@ class Worker:
     """Claim, process, and finalize one queued run at a time."""
 
     def __init__(
-        self, store: RunStore, queue: RunQueue, handler: RunHandler, kill_switch: bool = False
+        self,
+        store: RunStore,
+        queue: RunQueue,
+        handler: RunHandler,
+        kill_switch: bool = False,
+        max_attempts: int = 3,
     ) -> None:
         self.store = store
         self.queue = queue
         self.handler = handler
         self.kill_switch = kill_switch
+        self.max_attempts = max_attempts
 
     async def run_once(self, timeout_seconds: int = 1) -> Run | None:
         """Process one queue item; return none when the queue is empty or killed."""
@@ -55,6 +61,14 @@ class Worker:
                 raise ValueError("handler returned a non-terminal state")
             return self.store.transition(running.idempotency_key, target)
         except Exception as exc:
-            self.store.dead_letter(running.idempotency_key, str(exc))
-            self.store.transition(running.idempotency_key, RunStatus.FAILED)
-            return self.store.get(running.idempotency_key)
+            retry = self.store.retry_or_fail(running.idempotency_key, str(exc), self.max_attempts)
+            if retry.status is RunStatus.QUEUED:
+                try:
+                    await self.queue.enqueue(retry)
+                except Exception as queue_error:
+                    self.store.audit(
+                        retry.idempotency_key,
+                        "queue.enqueue_failed",
+                        {"reason": str(queue_error)[:200]},
+                    )
+            return retry

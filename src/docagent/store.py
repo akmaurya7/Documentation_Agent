@@ -36,6 +36,7 @@ class Run:
     base_sha: str = ""
     base_branch: str = ""
     report_json: str = ""
+    attempts: int = 0
 
 
 _TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
@@ -81,6 +82,7 @@ class RunStore:
                 source_url TEXT NOT NULL DEFAULT '',
                 base_sha VARCHAR(256) NOT NULL DEFAULT '',
                 base_branch VARCHAR(256) NOT NULL DEFAULT '',
+                attempts INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )"""))
             connection.execute(text(f"""CREATE TABLE IF NOT EXISTS audit_events (
@@ -111,11 +113,15 @@ class RunStore:
                     str(row[1])
                     for row in connection.exec_driver_sql("PRAGMA table_info(runs)").all()
                 }
-                for name in ("source_url", "base_sha", "base_branch"):
+                for name in ("source_url", "base_sha", "base_branch", "attempts"):
                     if name not in columns:
-                        connection.execute(
-                            text(f"ALTER TABLE runs ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+                        column_type = "INTEGER" if name == "attempts" else "TEXT"
+                        default = "0" if name == "attempts" else "''"
+                        ddl = (
+                            f"ALTER TABLE runs ADD COLUMN {name} "
+                            f"{column_type} NOT NULL DEFAULT {default}"
                         )
+                        connection.execute(text(ddl))
 
     def enqueue_once(
         self, key: str, delivery_id: str, repo: str, head_sha: str, event_type: str,
@@ -143,7 +149,7 @@ class RunStore:
         with self.engine.connect() as connection:
             row = connection.execute(
                 text("""SELECT idempotency_key, delivery_id, repo, head_sha, event_type,
-                status, source_url, base_sha, base_branch FROM runs
+                status, source_url, base_sha, base_branch, attempts FROM runs
                 WHERE idempotency_key = :key"""), {"key": key}
             ).mappings().first()
         if row is None:
@@ -199,7 +205,7 @@ class RunStore:
         with self.engine.connect() as connection:
             rows = connection.execute(
                 text("""SELECT idempotency_key, delivery_id, repo, head_sha, event_type,
-                status, source_url, base_sha, base_branch FROM runs
+                status, source_url, base_sha, base_branch, attempts FROM runs
                 ORDER BY created_at DESC LIMIT :limit"""), {"limit": limit}
             ).mappings().all()
         return [_run(row) for row in rows]
@@ -222,6 +228,35 @@ class RunStore:
                 text("INSERT INTO dead_letters(idempotency_key, error) VALUES (:key, :error)"),
                 {"key": key, "error": safe_error},
             )
+
+    def retry_or_fail(self, key: str, error: str, max_attempts: int) -> Run:
+        """Requeue an exception up to the bound, then persist a dead letter."""
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be positive")
+        current = self.get(key)
+        if current is None:
+            raise KeyError(key)
+        if current.status is not RunStatus.RUNNING:
+            raise ValueError("only running runs can be retried")
+        attempts = current.attempts + 1
+        target = RunStatus.QUEUED if attempts < max_attempts else RunStatus.FAILED
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                text("UPDATE runs SET status = :status, attempts = :attempts "
+                     "WHERE idempotency_key = :key AND status = 'running'"),
+                {"key": key, "status": target.value, "attempts": attempts},
+            )
+            if result.rowcount != 1:
+                raise ValueError("run changed before retry handling")
+        if target is RunStatus.FAILED:
+            self.dead_letter(key, error)
+            self.audit(key, "run.dead_lettered", {"attempts": attempts})
+        else:
+            self.audit(key, "run.retry_scheduled", {"attempts": attempts})
+        updated = self.get(key)
+        if updated is None:
+            raise RuntimeError("run disappeared during retry handling")
+        return updated
 
     def set_kill_switch(self, enabled: bool) -> None:
         """Persist the shared worker/API kill switch."""
@@ -303,5 +338,6 @@ def _run(row: object, report_json: str = "") -> Run:
         source_url=str(values["source_url"]),  # type: ignore[index]
         base_sha=str(values["base_sha"]),  # type: ignore[index]
         base_branch=str(values["base_branch"]),  # type: ignore[index]
+        attempts=int(values["attempts"]),  # type: ignore[index]
         report_json=report_json,
     )
