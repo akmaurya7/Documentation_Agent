@@ -8,10 +8,10 @@ version = "0.1.0"
 description = "A fail-closed documentation engineer for GitHub repositories."
 requires-python = ">=3.12"
 dependencies = [
-  "fastapi==0.115.6",
+  "fastapi==0.143.0",
   "httpx==0.28.1",
-  "PyJWT==2.10.1",
-  "cryptography==44.0.0",
+  "PyJWT==2.15.1",
+  "cryptography==50.0.2",
   "anthropic==0.42.0",
   "pydantic==2.10.5",
   "pydantic-settings==2.7.1",
@@ -20,15 +20,16 @@ dependencies = [
   "psycopg[binary]==3.2.3",
   "alembic==1.14.1",
   "structlog==25.1.0",
-  "uvicorn[standard]==0.34.0",
+  "uvicorn[standard]==0.54.0",
+  "tornado==6.5.9",
 ]
 
 [project.optional-dependencies]
 dev = [
   "mypy==1.14.1",
-  "pytest==8.3.4",
-  "pytest-cov==6.0.0",
-  "pytest-asyncio==0.25.3",
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "pytest-asyncio==1.4.0",
   "ruff==0.9.4",
 ]
 
