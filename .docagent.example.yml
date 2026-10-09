@@ -1,0 +1,14 @@
+docs_root: docs
+docs_map: docs/DOCS_MAP.yml
+docsignore: []
+shadow: true
+docstring_mode: false
+log_mode: false
+owners: []
+allowed_prompt_hashes: []
+limits:
+  files: 20
+  input_tokens: 40000
+  output_tokens: 12000
+  tool_calls: 80
+  wall_time_seconds: 600
