@@ -7,7 +7,8 @@ from typing import Any, Protocol
 
 from .checks.docs import CheckReport
 from .github.checkout import Checkout
-from .guardrails import GuardrailViolation, verify_branch, verify_scope
+from .guardrails import GuardrailViolation, verify_branch, verify_protected_paths, verify_scope
+from .redaction import contains_secret
 
 
 class PullRequestAPI(Protocol):
@@ -55,6 +56,8 @@ class Publisher:
         """Publish only a checked documentation diff."""
         if checks.failed:
             return PublishResult("blocked", reason="documentation checks failed")
+        if contains_secret(body):
+            return PublishResult("blocked", reason="secret detected in pull-request body")
         existing = await self.api.find_open_agent_pr(repo, head_sha)
         if existing is not None:
             return PublishResult("existing", pull_request_url=str(existing.get("url", "")))
@@ -67,6 +70,7 @@ class Publisher:
             checkout.run(["add", "--", docs_root])
             changed = checkout.run(["diff", "--cached", "--name-only"]).splitlines()
             verify_scope(changed, docs_root)
+            verify_protected_paths(changed)
             if not changed:
                 return PublishResult("noop", branch=branch)
             checkout.run(["commit", "-m", f"docs(agent): {title} [run {run_id}]"])

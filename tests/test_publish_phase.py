@@ -55,3 +55,23 @@ def test_shadow_publisher_does_not_push(tmp_path: Path) -> None:
     )
     assert result.status == "shadow"
     assert api.created is False
+
+
+def test_publisher_rejects_secret_in_pull_request_body(tmp_path: Path) -> None:
+    api = FakePRAPI()
+    result = asyncio.run(
+        Publisher(api).publish(
+            Checkout(tmp_path),
+            run_id="r1",
+            repo="acme/app",
+            head_sha="abc",
+            base_branch="main",
+            docs_root="docs",
+            title="update guide",
+            body="token=ghp_123456789012345678901234567890",
+            checks=type("Checks", (), {"failed": []})(),
+            shadow=True,
+        )
+    )
+    assert result.status == "blocked"
+    assert api.created is False
