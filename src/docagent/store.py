@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from enum import StrEnum
@@ -32,6 +33,7 @@ class Run:
     source_url: str = ""
     base_sha: str = ""
     base_branch: str = ""
+    report_json: str = ""
 
 
 _TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
@@ -71,6 +73,19 @@ class RunStore:
                     connection.execute(
                         f"ALTER TABLE runs ADD COLUMN {name} TEXT NOT NULL DEFAULT ''"
                     )
+            connection.execute("""CREATE TABLE IF NOT EXISTS audit_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                idempotency_key TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""")
+            connection.execute("""CREATE TABLE IF NOT EXISTS run_reports (
+                idempotency_key TEXT PRIMARY KEY,
+                report_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(idempotency_key) REFERENCES runs(idempotency_key)
+            )""")
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
@@ -124,7 +139,49 @@ class RunStore:
             source_url=row["source_url"],
             base_sha=row["base_sha"],
             base_branch=row["base_branch"],
+            report_json=self.report(key),
         )
+
+    def report(self, key: str) -> str:
+        """Return the stored sanitized report JSON, or an empty string."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT report_json FROM run_reports WHERE idempotency_key = ?", (key,)
+            ).fetchone()
+        return "" if row is None else str(row["report_json"])
+
+    def save_report(self, key: str, report: dict[str, object]) -> None:
+        """Persist one JSON report and reject non-JSON values."""
+        encoded = json.dumps(report, sort_keys=True, separators=(",", ":"))
+        with self._connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM runs WHERE idempotency_key = ?", (key,)
+            ).fetchone() is None:
+                raise KeyError(key)
+            connection.execute(
+                "INSERT INTO run_reports(idempotency_key, report_json) VALUES (?, ?) "
+                "ON CONFLICT(idempotency_key) DO UPDATE SET report_json = excluded.report_json",
+                (key, encoded),
+            )
+
+    def audit(self, key: str, event_type: str, details: dict[str, object] | None = None) -> None:
+        """Append one audit event; callers must provide already-redacted details."""
+        encoded = json.dumps(details or {}, sort_keys=True, separators=(",", ":"))
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO audit_events(idempotency_key, event_type, details_json) "
+                "VALUES (?, ?, ?)",
+                (key, event_type, encoded),
+            )
+
+    def audit_events(self, key: str) -> list[tuple[str, str]]:
+        """Return audit event type and JSON details in append order."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT event_type, details_json FROM audit_events "
+                "WHERE idempotency_key = ? ORDER BY id", (key,)
+            ).fetchall()
+        return [(str(row["event_type"]), str(row["details_json"])) for row in rows]
 
     def transition(self, key: str, target: RunStatus) -> Run:
         """Apply one legal state transition atomically."""
