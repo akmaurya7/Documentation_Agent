@@ -85,3 +85,28 @@ async def test_agent_cannot_stop_without_finalize(tmp_path: Path) -> None:
             head_sha="abc",
             max_tool_calls=1,
         )
+
+
+@pytest.mark.asyncio
+async def test_agent_enforces_provider_token_budget(tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("policy", encoding="utf-8")
+    digest = hashlib.sha256(b"policy").hexdigest()
+    provider = ScriptedProvider([
+        ProviderResponse(
+            tool_call=ToolCall(id="1", name="finalize", arguments={"status": "success"}),
+            input_tokens=11,
+        )
+    ])
+    with pytest.raises(AgentLoopError, match="token budget"):
+        await run_agent(
+            provider=provider,
+            context=ToolContext(Checkout(tmp_path), "docs"),
+            prompt_path=str(prompt),
+            allowed_prompt_hashes={digest},
+            model="fake",
+            run_id="r1",
+            event_type="push",
+            head_sha="abc",
+            max_input_tokens=10,
+        )
