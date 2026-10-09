@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 
 from fastapi import FastAPI, HTTPException, Request
@@ -33,6 +34,35 @@ def create_app(
         if config.kill_switch:
             raise HTTPException(status_code=503, detail="kill switch is active")
         return {"status": "ready"}
+
+    def require_admin(request: Request) -> None:
+        supplied = request.headers.get("x-docagent-admin-token", "")
+        if not config.admin_token or not hmac.compare_digest(supplied, config.admin_token):
+            raise HTTPException(status_code=401, detail="admin authentication required")
+
+    @app.get("/admin/runs")
+    async def admin_runs(request: Request, limit: int = 100) -> list[dict[str, str]]:
+        require_admin(request)
+        return [
+            {
+                "idempotency_key": run.idempotency_key,
+                "delivery_id": run.delivery_id,
+                "repo": run.repo,
+                "head_sha": run.head_sha,
+                "event_type": run.event_type,
+                "status": run.status.value,
+            }
+            for run in run_store.list_runs(limit)
+        ]
+
+    @app.post("/admin/kill-switch")
+    async def admin_kill_switch(request: Request) -> dict[str, bool]:
+        require_admin(request)
+        payload = await request.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
+            raise HTTPException(status_code=400, detail="enabled boolean is required")
+        config.kill_switch = payload["enabled"]
+        return {"enabled": config.kill_switch}
 
     @app.post("/webhooks/github")
     async def github_webhook(request: Request) -> JSONResponse:

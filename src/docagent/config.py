@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     github_app_id: int | None = None
     github_private_key_path: str | None = None
     github_bot_login: str = "docagent[bot]"
+    admin_token: str | None = Field(default=None, repr=False)
     shadow: bool = True
     allowed_prompt_hashes: set[str] = Field(default_factory=set)
     docs_root: str = "docs"

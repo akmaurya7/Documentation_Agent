@@ -163,3 +163,23 @@ def test_worker_fail_closes_and_is_idempotent(tmp_path: Path) -> None:
     assert result is not None
     assert result.status is RunStatus.BLOCKED
     assert asyncio.run(Worker(store, queue, FailClosedHandler()).run_once()) is None
+
+
+def test_admin_endpoints_require_token_and_control_kill_switch(tmp_path: Path) -> None:
+    settings = Settings(
+        webhook_secret="a" * 32,
+        admin_token="b" * 24,
+        database_path=str(tmp_path / "runs.db"),
+    )
+    store = RunStore(settings.database_path)
+    store.enqueue_once("k", "d", "acme/app", "sha", "push")
+    client = TestClient(create_app(settings, store, LocalRunQueue()))
+    assert client.get("/admin/runs").status_code == 401
+    headers = {"x-docagent-admin-token": "b" * 24}
+    response = client.get("/admin/runs", headers=headers)
+    assert response.status_code == 200
+    assert response.json()[0]["status"] == "queued"
+    response = client.post(
+        "/admin/kill-switch", headers=headers, json={"enabled": True}
+    )
+    assert response.json() == {"enabled": True}

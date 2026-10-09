@@ -183,6 +183,31 @@ class RunStore:
             ).fetchall()
         return [(str(row["event_type"]), str(row["details_json"])) for row in rows]
 
+    def list_runs(self, limit: int = 100) -> list[Run]:
+        """Return recent runs without exposing stored report contents."""
+        if not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT idempotency_key, delivery_id, repo, head_sha, event_type, status, "
+                "source_url, base_sha, base_branch FROM runs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            Run(
+                idempotency_key=row["idempotency_key"],
+                delivery_id=row["delivery_id"],
+                repo=row["repo"],
+                head_sha=row["head_sha"],
+                event_type=row["event_type"],
+                status=RunStatus(row["status"]),
+                source_url=row["source_url"],
+                base_sha=row["base_sha"],
+                base_branch=row["base_branch"],
+            )
+            for row in rows
+        ]
+
     def transition(self, key: str, target: RunStatus) -> Run:
         """Apply one legal state transition atomically."""
         current = self.get(key)
