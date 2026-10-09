@@ -36,7 +36,7 @@ class Worker:
 
     async def run_once(self, timeout_seconds: int = 1) -> Run | None:
         """Process one queue item; return none when the queue is empty or killed."""
-        if self.kill_switch:
+        if self.kill_switch or self.store.kill_switch_enabled():
             return None
         queued = await self.queue.dequeue(timeout_seconds)
         if queued is None:
@@ -45,7 +45,7 @@ class Worker:
         if current is None or current.status is not RunStatus.QUEUED:
             return current
         running = self.store.transition(current.idempotency_key, RunStatus.RUNNING)
-        if self.kill_switch:
+        if self.kill_switch or self.store.kill_switch_enabled():
             self.store.transition(running.idempotency_key, RunStatus.BLOCKED)
             return self.store.get(running.idempotency_key)
         try:

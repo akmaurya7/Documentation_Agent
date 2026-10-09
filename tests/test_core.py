@@ -184,6 +184,7 @@ def test_admin_endpoints_require_token_and_control_kill_switch(tmp_path: Path) -
         "/admin/kill-switch", headers=headers, json={"enabled": True}
     )
     assert response.json() == {"enabled": True}
+    assert store.kill_switch_enabled() is True
 
 
 def test_metrics_expose_only_run_counts(tmp_path: Path) -> None:

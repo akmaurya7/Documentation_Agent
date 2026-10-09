@@ -31,7 +31,7 @@ def create_app(
 
     @app.get("/readyz")
     async def readyz() -> dict[str, str]:
-        if config.kill_switch:
+        if config.kill_switch or run_store.kill_switch_enabled():
             raise HTTPException(status_code=503, detail="kill switch is active")
         return {"status": "ready"}
 
@@ -67,6 +67,7 @@ def create_app(
         if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
             raise HTTPException(status_code=400, detail="enabled boolean is required")
         config.kill_switch = payload["enabled"]
+        run_store.set_kill_switch(config.kill_switch)
         return {"enabled": config.kill_switch}
 
     @app.post("/webhooks/github")
@@ -85,7 +86,7 @@ def create_app(
             raise HTTPException(status_code=400, detail="invalid JSON payload") from exc
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="webhook payload must be an object")
-        if config.kill_switch:
+        if config.kill_switch or run_store.kill_switch_enabled():
             return JSONResponse(
                 {"accepted": False, "reason": "kill switch is active"}, status_code=202
             )

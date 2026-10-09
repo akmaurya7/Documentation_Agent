@@ -45,3 +45,10 @@ def test_store_accepts_sqlalchemy_database_url(tmp_path):
     store = RunStore(str(tmp_path / "unused.db"), f"sqlite:///{database.as_posix()}")
     assert store.enqueue_once("url", "d", "acme/app", "sha", "push")
     assert store.get("url") is not None
+
+
+def test_kill_switch_is_shared_in_persistence(tmp_path):
+    store = RunStore(str(tmp_path / "runs.db"))
+    assert store.kill_switch_enabled() is False
+    store.set_kill_switch(True)
+    assert RunStore(str(tmp_path / "runs.db")).kill_switch_enabled() is True

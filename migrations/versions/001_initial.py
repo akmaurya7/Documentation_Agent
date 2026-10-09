@@ -50,9 +50,17 @@ def upgrade() -> None:
             sa.Column("error", sa.Text(), nullable=False),
             sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         )
+    if not inspector.has_table("control_flags"):
+        op.create_table(
+            "control_flags",
+            sa.Column("name", sa.String(128), primary_key=True),
+            sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+        )
 
 
 def downgrade() -> None:
+    op.drop_table("control_flags")
     op.drop_table("dead_letters")
     op.drop_table("run_reports")
     op.drop_table("audit_events")

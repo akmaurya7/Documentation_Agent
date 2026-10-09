@@ -101,6 +101,11 @@ class RunStore:
                 error TEXT NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )"""))
+            connection.execute(text("""CREATE TABLE IF NOT EXISTS control_flags (
+                name VARCHAR(128) PRIMARY KEY,
+                enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"""))
             if not self._postgres:
                 columns = {
                     str(row[1])
@@ -217,6 +222,24 @@ class RunStore:
                 text("INSERT INTO dead_letters(idempotency_key, error) VALUES (:key, :error)"),
                 {"key": key, "error": safe_error},
             )
+
+    def set_kill_switch(self, enabled: bool) -> None:
+        """Persist the shared worker/API kill switch."""
+        with self.engine.begin() as connection:
+            connection.execute(
+                text("""INSERT INTO control_flags(name, enabled) VALUES ('kill_switch', :enabled)
+                ON CONFLICT(name) DO UPDATE SET enabled = :enabled,
+                updated_at = CURRENT_TIMESTAMP"""),
+                {"enabled": enabled},
+            )
+
+    def kill_switch_enabled(self) -> bool:
+        """Read the shared kill switch, defaulting to disabled."""
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                text("SELECT enabled FROM control_flags WHERE name = 'kill_switch'")
+            ).first()
+        return bool(row[0]) if row is not None else False
 
     def transition(self, key: str, target: RunStatus) -> Run:
         """Apply one legal state transition atomically."""
