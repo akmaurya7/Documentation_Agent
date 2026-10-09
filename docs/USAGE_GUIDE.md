@@ -1,8 +1,8 @@
 ---
 title: DocAgent usage and operations guide
 owner: documentation-platform
-last_verified_commit: d9542dd
-status: draft
+last_verified_commit: 7e990b9
+status: maintained
 ---
 
 # DocAgent usage and operations guide
@@ -15,6 +15,81 @@ validates the resulting documentation, and publishes only approved files.
 
 Human reviewers remain responsible for reviewing and merging documentation pull
 requests. DocAgent does not approve or merge pull requests.
+
+## 0. Beginner overview
+
+### What problem does DocAgent solve?
+
+When software changes, its documentation can become inaccurate. DocAgent
+listens for a GitHub change, asks a configured language model whether the
+change needs documentation, creates or updates documentation inside the
+approved documentation directory, runs safety checks, and optionally opens a
+pull request for a human to review.
+
+DocAgent is not a general-purpose coding bot. Its intended output is
+documentation only. It cannot merge pull requests, approve its own work, write
+arbitrary repository files, or bypass the configured checks.
+
+### The simplest mental model
+
+Think of DocAgent as two services connected by a queue:
+
+```text
+GitHub sends an event
+        |
+        v
+API checks and records the event
+        |
+        v
+Redis holds the work item
+        |
+        v
+Worker reads the exact commit, asks the model, checks the result,
+and either reports it or opens a documentation pull request
+```
+
+The API is the receptionist. It authenticates and queues work, but does not do
+long-running model work. The worker is the technician. It performs the actual
+checkout, analysis, document editing, validation, and publication.
+
+### What you must provide
+
+For a real end-to-end run, you need all of these:
+
+1. Python 3.12 or newer and Git.
+2. Redis, because the API and worker communicate through a durable queue.
+3. A database. SQLite is acceptable for one local instance; PostgreSQL is the
+   production choice.
+4. A GitHub App installed in the target repository.
+5. One model provider: Anthropic API key, Codex OAuth login, or Antigravity
+   CLI account login.
+6. A webhook secret and an administrator token.
+7. A trusted hash for the system prompt.
+
+If one required item is missing, the service is designed to stop safely. A
+`blocked` result is preferable to silently making an unverified change.
+
+### What happens to a normal code change?
+
+Suppose a developer changes `src/payments.py` and the change affects the API.
+GitHub sends a webhook. DocAgent records the event, puts it in Redis, checks
+out the exact commit, and compares it with the trusted base commit. The model
+receives a bounded summary and a small set of typed tools. It may read files,
+search the repository, inspect the diff, and write a file such as
+`docs/payments.md`. It must finish by calling the typed `finalize` tool.
+
+The deterministic checks then verify the generated file. In shadow mode the
+result is stored for review. With publication enabled, DocAgent creates or
+updates a branch and opens a documentation pull request. A human reviews and
+merges that pull request.
+
+### What does “fail closed” mean?
+
+Fail closed means DocAgent refuses to perform the risky action when it cannot
+prove that the action is safe. Examples include an invalid webhook signature,
+missing GitHub credentials, a prompt hash mismatch, an unavailable provider,
+an unsafe path, failed documentation checks, or a missing finalization result.
+It may still save a sanitized status explaining why the run was blocked.
 
 ## 1. How the system works
 
@@ -89,6 +164,31 @@ retry is audited. Once the bound is reached, the run is marked `failed` and a
 redacted dead-letter record is stored. An operator may explicitly re-run a
 `failed`, `blocked`, or `noop` run through the authenticated admin endpoint.
 
+### How to read a run result
+
+- `queued` means the API accepted the event and stored it, but a worker has not
+  claimed it yet.
+- `running` means a worker owns the run and is working on the exact source
+  commit.
+- `noop` is normal when the change is documentation-only, empty, or does not
+  require a documentation update.
+- `blocked` means a safety or configuration rule stopped the run. Fix the
+  stated configuration or policy issue before retrying.
+- `failed` means processing reached a terminal error or exhausted its retry
+  attempts. Inspect the audit/dead-letter information before rerunning.
+- `succeeded` means the documentation result passed the configured workflow;
+  it does not mean a human has reviewed or merged the pull request.
+
+### What the model is allowed to do
+
+The model receives a policy prompt, repository context, a bounded diff, and
+typed tools. Depending on the run it can read a file, search for text, inspect
+the diff, write an approved documentation file, and finalize the run. The
+model cannot directly execute arbitrary shell commands, change workflow files,
+edit secrets, publish a pull request by itself, or expand the documentation
+root. The surrounding application—not the model—enforces path checks, limits,
+redaction, documentation checks, and publication rules.
+
 ## 3. Prerequisites
 
 ### Local development
@@ -119,6 +219,30 @@ Create the GitHub App with only the permissions needed for this workflow:
 metadata read, contents read/write, and pull-request write. Do not grant
 administrator, Actions, secrets, or workflow permissions.
 
+### Which provider should I choose?
+
+Choose exactly one provider for each worker deployment:
+
+| Provider | Credential style | Best for | Important detail |
+| --- | --- | --- | --- |
+| `anthropic` | `ANTHROPIC_API_KEY` | A conventional server API integration. | The key is read by the Anthropic SDK and must be supplied to the worker environment. |
+| `codex_oauth` | Interactive browser login plus encrypted credential file. | Using an eligible ChatGPT/Codex account without putting an API key in the worker configuration. | The login is performed by an operator and the encrypted file must be writable for token rotation. |
+| `antigravity_cli` | Interactive `agy` account session. | A worker host that already has an authenticated Antigravity CLI account. | The `agy` binary and its account/keyring must exist on the worker host. |
+
+Do not configure multiple providers expecting automatic fallback. The selected
+provider is deliberate. If it is unavailable, the run fails or blocks rather
+than silently switching to a different account or billing source.
+
+### Important distinction: API key versus OAuth login
+
+An API key is a long-lived secret supplied directly to a provider SDK. OAuth is
+a browser-based authorization process: you sign in, grant permission, and the
+application receives renewable tokens. DocAgent stores Codex OAuth tokens in an
+encrypted file and never places them in reports, pull requests, or normal log
+messages. OAuth still needs secure secret handling; the Fernet encryption key
+protects the file, while the operating system or deployment secret manager
+must protect the Fernet key itself.
+
 ## 4. Install and run locally
 
 From the repository root:
@@ -133,9 +257,53 @@ Edit `.env` and set at least:
 
 ```text
 DOCAGENT_WEBHOOK_SECRET=<random value of at least 16 characters>
-ANTHROPIC_API_KEY=<provider key>
 DOCAGENT_ADMIN_TOKEN=<strong random operator token>
+DOCAGENT_PROVIDER=<anthropic|codex_oauth|antigravity_cli>
+DOCAGENT_MODEL_NAME=<model supported by the selected provider>
 ```
+
+Then add the credential settings for the provider you selected below. The
+`.env` file is for local development only. Do not commit it, send it in a
+ticket, or paste it into a pull request.
+
+### First local smoke test
+
+Use this sequence when setting up the project for the first time:
+
+1. Install the package and copy `.env.example` to `.env`.
+2. Start Redis. Docker users can run `docker compose up redis postgres`.
+3. Configure one provider and verify its credentials with that provider's
+   login or key check.
+4. Compute and configure the prompt hash as described in section 6.
+5. Start the API in one terminal and the worker in another.
+6. Call `/healthz`, then `/readyz`. A healthy API is not proof that the worker
+   has usable GitHub or model credentials.
+7. Send a signed test webhook from a test repository.
+8. Inspect `/admin/runs` using the admin token and confirm the run transitions
+   from `queued` to `running` and then to `noop`, `blocked`, `failed`, or
+   `succeeded`.
+9. Keep shadow mode enabled until the report and generated documentation have
+   been reviewed.
+
+The API process and worker process are separate. Starting only the API will
+accept and queue events, but no documentation work will be performed until a
+worker is running.
+
+### Anthropic API-key setup
+
+For the standard API-key provider, put the key in the worker environment and
+select the provider:
+
+```text
+DOCAGENT_PROVIDER=anthropic
+DOCAGENT_MODEL_NAME=claude-3-5-sonnet-latest
+ANTHROPIC_API_KEY=<your Anthropic key>
+```
+
+The key must be present where the worker runs, not only in the terminal where
+the API runs. Do not include quotes unless your secret-management system
+requires them. If the key is missing or rejected, the run will not fall back to
+Codex OAuth or Antigravity.
 
 ### Antigravity CLI account login
 
@@ -277,8 +445,11 @@ restart the worker. A hash mismatch blocks processing before model execution.
 | --- | --- | --- |
 | `DOCAGENT_WEBHOOK_SECRET` | HMAC secret for GitHub webhooks. | Required. |
 | `ANTHROPIC_API_KEY` | Anthropic provider credential. | Required only when provider is `anthropic`. |
-| `DOCAGENT_PROVIDER` | Provider adapter. | `anthropic` or `antigravity_cli` |
+| `DOCAGENT_PROVIDER` | Provider adapter. | `anthropic`, `codex_oauth`, or `antigravity_cli` |
 | `DOCAGENT_ANTIGRAVITY_COMMAND` | Antigravity CLI executable. | `agy` |
+| `DOCAGENT_CODEX_TOKEN_PATH` | Encrypted Codex credential file. | `data/codex_credentials.enc` |
+| `DOCAGENT_CODEX_TOKEN_KEY` | Fernet key for the Codex credential file. | Required only for `codex_oauth`. |
+| `DOCAGENT_CODEX_REDIRECT_PORT` | Local OAuth callback port used by the login command. | `1455` |
 | `DOCAGENT_PROMPT_PATH` | Trusted policy prompt path. | `prompts/docagent_system.md` |
 | `DOCAGENT_ALLOWED_PROMPT_HASHES` | Approved prompt SHA-256 values. | `[]` |
 | `DOCAGENT_DATABASE_PATH` | SQLite file path. | `data/docagent.sqlite3` |
@@ -302,13 +473,41 @@ tool calls, and wall-clock seconds.
 
 ## 8. Configure the GitHub webhook
 
+### GitHub App setup for beginners
+
+Create or use a GitHub App owned by the organization that owns the target
+repositories:
+
+1. Open GitHub organization settings, then Developer settings, then GitHub
+   Apps, and choose **New GitHub App**.
+2. Give it a recognizable name such as `documentation-agent`.
+3. Set the webhook URL to the public HTTPS URL ending in
+   `/webhooks/github`. Set a random webhook secret and copy the same secret to
+   `DOCAGENT_WEBHOOK_SECRET`.
+4. Grant only these repository permissions: Metadata read, Contents
+   read/write, and Pull requests read/write. The app does not need Actions,
+   secrets, administration, or workflow permissions.
+5. Subscribe to the push and pull-request events used by your workflow.
+6. Create a private key and download it once. Store it outside the repository
+   and point `DOCAGENT_GITHUB_PRIVATE_KEY_PATH` at it.
+7. Install the app on a test repository first. Confirm the installation has
+   access to the intended repository and no unintended repositories.
+8. Put the numeric App ID in `DOCAGENT_GITHUB_APP_ID` and the app bot login in
+   `DOCAGENT_GITHUB_BOT_LOGIN`.
+9. Restart the worker after changing credentials. The worker reads settings at
+   process startup.
+
+The webhook secret authenticates messages from GitHub; it is not the GitHub
+App private key and it is not a model-provider credential. Keep all three
+secrets separate.
+
 Set the GitHub App webhook URL to:
 
 ```text
 https://<docagent-host>/webhooks/github
 ```
 
-Use the same value as `DOCAGENT_WEBHOOK_SECRET`. Subscribe to the repository
+Use the same secret value as `DOCAGENT_WEBHOOK_SECRET`. Subscribe to the repository
 events needed by the deployment, normally push and pull-request events.
 
 GitHub must send these headers:
