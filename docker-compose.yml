@@ -17,6 +17,8 @@ services:
   docagent:
     build: .
     env_file: .env
+    environment:
+      DOCAGENT_DATABASE_URL: postgresql://docagent:docagent-local-only@postgres:5432/docagent
     ports:
       - "8000:8000"
     depends_on:
@@ -29,6 +31,8 @@ services:
   worker:
     build: .
     env_file: .env
+    environment:
+      DOCAGENT_DATABASE_URL: postgresql://docagent:docagent-local-only@postgres:5432/docagent
     command: ["python", "-m", "docagent.worker_main"]
     depends_on:
       - redis
