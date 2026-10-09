@@ -5,8 +5,18 @@ from __future__ import annotations
 import asyncio
 import json
 import tempfile
+import time
+from collections.abc import AsyncIterator
 from typing import Any, Protocol, cast
 
+import httpx
+
+from ..codex_oauth import (
+    CodexCredentials,
+    CodexCredentialStore,
+    CodexOAuthError,
+    refresh_credentials,
+)
 from .models import ProviderResponse, ToolCall
 
 
@@ -133,3 +143,132 @@ def _last_result(stdout: bytes) -> dict[str, Any]:
         if event.get("event") == "result" and isinstance(event.get("result"), dict):
             return cast(dict[str, Any], event["result"])
     raise ProviderError("Antigravity CLI returned no result event")
+
+
+class CodexOAuthProvider:
+    """Use a locally stored Sign in with ChatGPT session with Responses API."""
+
+    def __init__(self, store: CodexCredentialStore, timeout_seconds: int = 600) -> None:
+        self.store = store
+        self.timeout_seconds = timeout_seconds
+        self._refresh_lock = asyncio.Lock()
+
+    async def complete(
+        self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]], model: str
+    ) -> ProviderResponse:
+        credentials = await self._valid_credentials()
+        payload = {
+            "model": model,
+            "instructions": system,
+            "input": _responses_input(messages),
+            "tools": _responses_tools(tools),
+            "store": False,
+            "stream": True,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                async with client.stream(
+                    "POST",
+                    "https://api.openai.com/v1/responses",
+                    headers={"Authorization": f"Bearer {credentials.access_token}"},
+                    json=payload,
+                ) as response:
+                    if response.is_error:
+                        raise ProviderError("Codex Responses API request failed")
+                    return await _parse_responses_stream(response.aiter_lines())
+        except ProviderError:
+            raise
+        except (httpx.HTTPError, TimeoutError, ValueError, TypeError) as exc:
+            raise ProviderError("Codex Responses API could not complete safely") from exc
+
+    async def _valid_credentials(self) -> CodexCredentials:
+        credentials = self.store.load()
+        if credentials is None:
+            raise ProviderError("Codex OAuth credentials are not configured")
+        if credentials.expires_at > int(time.time()) + 120:
+            return credentials
+        async with self._refresh_lock:
+            current = self.store.load() or credentials
+            if current.expires_at <= int(time.time()) + 120:
+                try:
+                    current = await refresh_credentials(current)
+                    self.store.save(current)
+                except CodexOAuthError as exc:
+                    raise ProviderError("Codex OAuth credentials could not be refreshed") from exc
+            return current
+
+
+def _responses_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "name": tool["name"],
+            "description": tool.get("description", ""),
+            "parameters": tool["input_schema"],
+        }
+        for tool in tools
+    ]
+
+
+def _responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if item.get("type") == "tool_use":
+                    result.append(
+                        {
+                            "type": "function_call",
+                            "call_id": item["id"],
+                            "name": item["name"],
+                            "arguments": json.dumps(item["input"], separators=(",", ":")),
+                        }
+                    )
+                elif item.get("type") == "tool_result":
+                    result.append(
+                        {
+                            "type": "function_call_output",
+                            "call_id": item["tool_use_id"],
+                            "output": str(item.get("content", "")),
+                        }
+                    )
+                else:
+                    result.append({"role": role, "content": item})
+        else:
+            result.append({"role": role, "content": content})
+    return result
+
+
+async def _parse_responses_stream(lines: AsyncIterator[str]) -> ProviderResponse:
+    call: dict[str, Any] | None = None
+    usage = {"input_tokens": 0, "output_tokens": 0}
+    async for line in lines:
+        if not line.startswith("data: "):
+            continue
+        try:
+            event = json.loads(line[6:])
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "response.output_item.done":
+            item = event.get("item", {})
+            if item.get("type") == "function_call":
+                call = item
+        elif event.get("type") == "response.completed":
+            usage.update(event.get("response", {}).get("usage", {}))
+    if call is None:
+        raise ProviderError("Codex model stopped without a tool call; finalize is required")
+    try:
+        arguments = json.loads(call.get("arguments", "{}"))
+        return ProviderResponse(
+            tool_call=ToolCall(
+                id=call.get("call_id", call.get("id", "")),
+                name=call["name"],
+                arguments=arguments,
+            ),
+            input_tokens=int(usage["input_tokens"]),
+            output_tokens=int(usage["output_tokens"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ProviderError("Codex Responses API returned invalid provider JSON") from exc

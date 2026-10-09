@@ -106,8 +106,9 @@ production persistence target.
 Provide:
 
 - A GitHub App installation on each target repository.
-- Credentials for the selected model provider: an Anthropic API key, or an
-  already authenticated Antigravity CLI account session.
+- Credentials for the selected model provider: an Anthropic API key, an
+  encrypted Codex OAuth session, or an already authenticated Antigravity CLI
+  account session.
 - A webhook secret shared between GitHub and DocAgent.
 - A private key file for the GitHub App.
 - A strong admin token for operational endpoints.
@@ -166,6 +167,43 @@ For Docker or a remote worker, the image must include a pinned `agy` binary and
 the runtime identity must have its own authenticated keyring/profile. A host
 login is not automatically visible inside a container. If that profile is
 unavailable, DocAgent fails closed rather than falling back to an API key.
+
+### Codex OAuth login
+
+Codex OAuth uses the official Sign in with ChatGPT loopback flow. Generate one
+Fernet key and keep it outside the repository:
+
+```powershell
+$env:DOCAGENT_CODEX_TOKEN_KEY = py -3.12 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Persist that value in the worker's secret manager or `.env` file, then run the
+login command on the same host that will run the worker:
+
+```powershell
+$env:DOCAGENT_CODEX_TOKEN_PATH = "data/codex_credentials.enc"
+$env:DOCAGENT_CODEX_REDIRECT_PORT = "1455"
+$env:PYTHONPATH = "src"
+py -3.12 -m docagent.codex_login
+```
+
+The command opens a browser, validates state, nonce, PKCE, issuer, audience,
+and the required direct plan-use scope, then writes encrypted credentials. It
+does not print or store plaintext tokens. Set the worker configuration:
+
+```text
+DOCAGENT_PROVIDER=codex_oauth
+DOCAGENT_MODEL_NAME=<a Responses API model available to the account>
+DOCAGENT_CODEX_TOKEN_PATH=data/codex_credentials.enc
+DOCAGENT_CODEX_TOKEN_KEY=<the same Fernet key>
+```
+
+The worker refreshes the access token shortly before expiry and atomically
+rotates the encrypted refresh-token record. The credential file and key must be
+available to every worker instance; the login command is an operator action,
+not an API endpoint. See the official [Sign in with ChatGPT guide](https://developers.openai.com/siwc/token-sharing-open-source/sign-in),
+[token reference](https://developers.openai.com/siwc/token-sharing-open-source/token-reference),
+and [models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
 
 Start the API:
 

@@ -54,8 +54,11 @@ class Settings(BaseSettings):
     app_name: str = "docagent"
     webhook_secret: str = Field(min_length=16, repr=False)
     model_name: str = "claude-3-5-sonnet-latest"
-    provider: Literal["anthropic", "antigravity_cli"] = "anthropic"
+    provider: Literal["anthropic", "antigravity_cli", "codex_oauth"] = "anthropic"
     antigravity_command: str = "agy"
+    codex_token_path: str = "data/codex_credentials.enc"
+    codex_token_key: str | None = Field(default=None, repr=False)
+    codex_redirect_port: int = Field(default=1455, ge=1024, le=65535)
     prompt_path: str = "prompts/docagent_system.md"
     database_path: str = "data/docagent.sqlite3"
     database_url: str | None = None

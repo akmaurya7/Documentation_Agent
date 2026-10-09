@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from .agent.provider import AnthropicProvider, AntigravityCliProvider
+from .agent.provider import AnthropicProvider, AntigravityCliProvider, CodexOAuthProvider, Provider
+from .codex_oauth import CodexCredentialStore
 from .config import Settings
 from .github.auth import GitHubAppAuth
 from .github.client import GitHubClient
@@ -40,11 +41,20 @@ def build_handler(settings: Settings, store: RunStore | None = None) -> RunHandl
     auth = GitHubAppAuth(settings.github_app_id, private_key)
     client = GitHubClient(auth)
     api = GitHubPullRequestAPI(client, settings.github_app_id, settings.github_bot_login)
-    provider = (
-        AnthropicProvider()
-        if settings.provider == "anthropic"
-        else AntigravityCliProvider(settings.antigravity_command, settings.limits.wall_time_seconds)
-    )
+    provider: Provider
+    if settings.provider == "anthropic":
+        provider = AnthropicProvider()
+    elif settings.provider == "antigravity_cli":
+        provider = AntigravityCliProvider(
+            settings.antigravity_command, settings.limits.wall_time_seconds
+        )
+    elif not settings.codex_token_key:
+        return FailClosedHandler()
+    else:
+        provider = CodexOAuthProvider(
+            CodexCredentialStore(settings.codex_token_path, settings.codex_token_key),
+            settings.limits.wall_time_seconds,
+        )
     return DocumentationRunHandler(
         provider,
         Publisher(api),
